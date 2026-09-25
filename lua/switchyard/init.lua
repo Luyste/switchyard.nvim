@@ -3,6 +3,9 @@ local M = {}
 function M.setup(opts)
 	require("switchyard.config").setup(opts)
 	require("switchyard.sessions").setup()
+	if require("switchyard.config").options.live_reload then
+		require("switchyard.live").setup()
+	end
 end
 
 function M.switch(dir)

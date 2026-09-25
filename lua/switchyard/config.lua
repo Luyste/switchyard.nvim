@@ -6,6 +6,7 @@ M.defaults = {
 	follow = true,
 	empty_worktree = "keep",
 	terminal = "auto",
+	live_reload = true, -- open files follow changes made by agents
 	viewer = {
 		width = 0.45, -- share of the editor's width for the viewer split
 	},
