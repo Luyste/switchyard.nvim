@@ -34,10 +34,12 @@ function M.switch(dir)
 		return false
 	end
 
-	-- Back to a single window with an empty buffer
+	-- Back to a single window with an empty buffer. A fresh window, because the
+	-- current one may be a file tree, a terminal or a float: `only` + `enew`
+	-- there would keep that window and replace its buffer.
 	vim.cmd("silent! tabonly")
+	vim.cmd("botright new")
 	vim.cmd("silent! only")
-	vim.cmd.enew()
 
 	-- Close the old folder's files (terminals and other special buffers stay)
 	local keep = vim.api.nvim_get_current_buf()

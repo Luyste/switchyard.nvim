@@ -14,6 +14,7 @@ local state = {
 	expanded = {}, -- worktree path -> true
 	filter = "",
 	selected_key = nil, -- keeps the selection on the same row across redraws
+	origin = nil, -- the window the yard was opened from
 }
 
 local function keys()
@@ -474,6 +475,10 @@ end
 function M.close()
 	ui.show_cursor()
 	pcall(vim.api.nvim_del_augroup_by_name, "switchyard_yard")
+	-- Closed from inside the yard: go back where it was opened. Otherwise Neovim
+	-- picks a window itself (often the file tree). Closed because you went to
+	-- another window: stay there.
+	local inside = vim.tbl_contains(vim.tbl_values(state.wins), vim.api.nvim_get_current_win())
 	for _, win in pairs(state.wins) do
 		if valid(win) then
 			pcall(vim.api.nvim_win_close, win, true)
@@ -485,6 +490,9 @@ function M.close()
 		end
 	end
 	state.wins, state.bufs = {}, {}
+	if inside and valid(state.origin) then
+		vim.api.nvim_set_current_win(state.origin)
+	end
 	vim.cmd.stopinsert()
 end
 
@@ -601,6 +609,7 @@ function M.open()
 	end
 
 	ui.set_highlights()
+	state.origin = vim.api.nvim_get_current_win()
 	state.mode, state.filter, state.rows = "filter", "", {}
 	state.worktrees, state.err, state.selected_key = nil, nil, nil
 
