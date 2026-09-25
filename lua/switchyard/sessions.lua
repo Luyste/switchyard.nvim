@@ -91,6 +91,11 @@ function M.link(session, quiet)
 	end
 end
 
+-- For statuslines: the linked session's process ID, from the cache
+function M.linked_pid()
+	return link and link.pid
+end
+
 -- For the statusline: uses the cached link, so it's cheap to call on every redraw
 function M.status()
 	if not link then

@@ -1,6 +1,7 @@
 local M = {}
 
-local viewer = { buf = nil, win = nil, name = nil }
+-- list: the agents the viewer can show here, as { pid, name } (for the statusline tabs)
+local viewer = { buf = nil, win = nil, name = nil, list = {} }
 
 local function valid_win(win)
 	return win ~= nil and vim.api.nvim_win_is_valid(win)
@@ -27,12 +28,32 @@ local function with_tmux_name(session, callback)
 	end)
 end
 
--- The viewer's own statusline: which agent, and whether keys go to it
+-- One agent tab: the visible one highlighted, ● before the linked one
+local function tab(name, visible, linked)
+	local label = (linked and "● " or "") .. name:gsub("%%", "%%%%") -- % is special in a statusline
+	return (visible and "%#SwitchyardSelection#" or "%#SwitchyardDim#") .. " " .. label .. " %*"
+end
+
+-- The viewer's own statusline: mode, agent tabs, hint. Runs on every redraw,
+-- so it only reads cached values (viewer.list, linked_pid), never files.
 function M.statusline()
-	local terminal = vim.api.nvim_get_mode().mode == "t"
+	local focused = vim.api.nvim_get_current_win() == viewer.win
+	local terminal = focused and vim.api.nvim_get_mode().mode == "t"
 	local badge = terminal and "%#SwitchyardFilterBadge# TERMINAL %*" or "%#SwitchyardNormalBadge# NORMAL %*"
 	local hint = terminal and "keys go to the agent" or "i type · q hide"
-	return " " .. badge .. "  " .. (viewer.name or "") .. "%=%#SwitchyardDim#" .. hint .. " %*"
+
+	local linked = require("switchyard.sessions").linked_pid()
+	local tabs, listed = {}, false
+	for _, agent in ipairs(viewer.list) do
+		listed = listed or agent.name == viewer.name
+		table.insert(tabs, tab(agent.name, agent.name == viewer.name, agent.pid == linked))
+	end
+	-- Shown from the yard, from another worktree: not in the list, still show it
+	if not listed and viewer.name then
+		table.insert(tabs, 1, tab(viewer.name, true, false))
+	end
+
+	return " " .. badge .. " " .. table.concat(tabs) .. "%=%#SwitchyardDim#" .. hint .. " %*"
 end
 
 -- The viewer window on the right: reuse it, or create it
@@ -49,6 +70,7 @@ local function open_window()
 	vim.wo[viewer.win].number = false
 	vim.wo[viewer.win].relativenumber = false
 	vim.wo[viewer.win].signcolumn = "no"
+	require("switchyard.ui").set_highlights()
 end
 
 -- Start a terminal attached to tmux session `name`, in the viewer window
@@ -66,6 +88,13 @@ local function attach(name)
 		buffer = buf,
 		callback = function()
 			vim.cmd.startinsert()
+		end,
+	})
+	-- Switching terminal/normal mode doesn't redraw the statusline by itself
+	vim.api.nvim_create_autocmd({ "TermEnter", "TermLeave" }, {
+		buffer = buf,
+		callback = function()
+			vim.cmd.redrawstatus()
 		end,
 	})
 
@@ -101,12 +130,56 @@ local function show_name(name)
 	else
 		attach(name)
 	end
+	-- A local statusline only sticks to the buffer it was set with, so set it
+	-- after the buffer is in place. %! re-evaluates it on every redraw.
+	vim.wo[viewer.win].statusline = "%!v:lua.require'switchyard.view'.statusline()"
 	vim.cmd.startinsert()
 end
 
+-- The agents the viewer can show here: the linked one first, then the others
+-- in this worktree, only those running in tmux. Stores them in viewer.list.
+-- callback(list of { pid, name }, linked session or nil)
+local function viewable(callback)
+	local sessions = require("switchyard.sessions")
+	local linked = sessions.linked()
+	local candidates = linked and { linked } or {}
+	for _, s in ipairs(sessions.in_folder(vim.fn.getcwd())) do
+		if not linked or s.pid ~= linked.pid then
+			table.insert(candidates, s)
+		end
+	end
+	local pids = vim.tbl_map(function(s)
+		return s.pid
+	end, candidates)
+	require("switchyard.tmux").sessions_for_pids(pids, function(names)
+		viewer.list = {}
+		for _, s in ipairs(candidates) do
+			if names[s.pid] then
+				table.insert(viewer.list, { pid = s.pid, name = names[s.pid] })
+			end
+		end
+		callback(viewer.list, linked)
+	end)
+end
+
+-- Update the tabs while the viewer is open
+local function refresh()
+	if valid_win(viewer.win) then
+		viewable(function()
+			vim.cmd.redrawstatus()
+		end)
+	end
+end
+
+vim.api.nvim_create_autocmd("User", { pattern = "SwitchyardSessionsChanged", callback = refresh })
+vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refresh })
+
 -- Show `session` in the viewer split
 function M.show(session)
-	with_tmux_name(session, show_name)
+	with_tmux_name(session, function(name)
+		show_name(name)
+		refresh()
+	end)
 end
 
 function M.hide()
@@ -116,66 +189,40 @@ function M.hide()
 	end
 end
 
--- Show or hide the linked agent
 -- Cmd+J: hide the viewer, or show the linked agent (or one from this worktree)
 function M.toggle()
 	if valid_win(viewer.win) then
 		return M.hide()
 	end
 
-	local sessions = require("switchyard.sessions")
-	local linked = sessions.linked()
-	local candidates = {}
-	if linked then
-		table.insert(candidates, linked)
-	end
-	for _, s in ipairs(sessions.in_folder(vim.fn.getcwd())) do
-		if not linked or s.pid ~= linked.pid then
-			table.insert(candidates, s)
-		end
-	end
-	if #candidates == 0 then
-		return vim.notify("switchyard: no agent to show here", vim.log.levels.WARN)
-	end
-
-	local pids = vim.tbl_map(function(s)
-		return s.pid
-	end, candidates)
-	require("switchyard.tmux").sessions_for_pids(pids, function(names)
-		-- 1. the linked agent, if it runs in tmux
-		if linked and names[linked.pid] then
-			return show_name(names[linked.pid])
-		end
-
-		-- 2-4. otherwise the agents here that run in tmux
-		local viewable = vim.tbl_filter(function(s)
-			return names[s.pid] ~= nil
-		end, candidates)
-		if #viewable == 0 then
+	viewable(function(list, linked)
+		if #list == 0 then
 			return vim.notify("switchyard: no agent here runs in tmux. Start one from the yard.", vim.log.levels.WARN)
 		end
-		if linked then
+		-- The linked agent comes first when it runs in tmux
+		local linked_shown = linked and list[1].pid == linked.pid
+		if linked and not linked_shown then
 			vim.notify("switchyard: the linked agent isn't in tmux, showing another one here")
 		end
-		if #viewable == 1 then
-			return show_name(names[viewable[1].pid])
+		if linked_shown or #list == 1 then
+			return show_name(list[1].name)
 		end
 
 		require("switchyard.menu").open({
 			title = "show which agent?",
-			items = vim.tbl_map(function(s)
+			items = vim.tbl_map(function(agent)
 				return {
-					label = names[s.pid],
+					label = agent.name,
 					action = function()
-						show_name(names[s.pid])
+						show_name(agent.name)
 					end,
 				}
-			end, viewable),
+			end, list),
 		})
 	end)
 end
 
----------------------------------------------------------------------------
+-------------------------------------------------------------------------
 -- External terminals
 ---------------------------------------------------------------------------
 

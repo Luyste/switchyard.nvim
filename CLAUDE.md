@@ -35,7 +35,7 @@ anything, then **inspect the actual code**: some items below are marked
     (function form, so a missing name never breaks startup):
     `<D-W>` pick_worktree, `<D-A>` pick_agent, `<D-N>` start_agent,
     `<D-Y>` open_yard (I also want Cmd+Shift+S for the yard), `<D-j>` toggle_view
-    (n + t), `<D-S-j>` open_external, `t <D-Esc>` → `<C-\><C-n>`,
+    (n + t), `<D-S-j>` open_external, `t <D-r>` → `<C-\><C-n>` (Cmd+Esc never reaches Neovim in Neovide),
     `t <C-w>h/j/k/l/w/p` → `<C-\><C-n><C-w>…` for window moves from terminals.
   - My statusline (`lua/config/statusline.lua`) shows the linked agent via
     `pcall(require("switchyard").status)`, in both the file-tree and file
