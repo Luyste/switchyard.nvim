@@ -33,6 +33,14 @@ function M.toggle_view()
 	require("switchyard.view").toggle()
 end
 
+function M.next_agent()
+	require("switchyard.view").cycle(1)
+end
+
+function M.prev_agent()
+	require("switchyard.view").cycle(-1)
+end
+
 function M.open_external()
 	local s = require("switchyard.sessions").linked()
 	if not s then
