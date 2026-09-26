@@ -230,10 +230,21 @@ function M.show(session)
 end
 
 function M.hide()
-	if valid_win(viewer.win) then
-		vim.api.nvim_win_hide(viewer.win)
-		viewer.win = nil
+	if not valid_win(viewer.win) then
+		return
 	end
+	local others = vim.tbl_filter(function(win)
+		return win ~= viewer.win and vim.api.nvim_win_get_config(win).relative == ""
+	end, vim.api.nvim_tabpage_list_wins(0))
+	if #others == 0 then
+		-- The last window can't be hidden (E444): turn it into an empty editor
+		-- window instead. The agent's terminal stays loaded in the background.
+		vim.cmd.stopinsert()
+		vim.api.nvim_win_set_buf(viewer.win, vim.api.nvim_create_buf(true, false))
+	else
+		vim.api.nvim_win_hide(viewer.win)
+	end
+	viewer.win = nil
 end
 
 -- Jump between the viewer and the editor, in terminal and normal mode.

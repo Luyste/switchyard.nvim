@@ -172,7 +172,8 @@ lua/switchyard/
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload + follow edits; arrival: arrival rules + peek;
-                             launch: linking after a start; yard: open/close)
+                             launch: linking after a start; yard: open/close;
+                             view: showing/hiding, also as the last window)
 ```
 
 ## Status
@@ -365,6 +366,8 @@ it). Worktree rows may still show the diff size vs the default branch later
 - A pending redraw (e.g. the yard closing, insert mode ending) wipes a message
   shown right before it: `redraw` before `vim.notify` in switch paths.
 - `:only` also closes the viewer: whoever switches must bring it back.
+- The last window can't be hidden or closed (E444): `view.hide()` swaps in an
+  empty buffer when the viewer is the only window left.
 - `ipairs({ a, b })` stops at the first nil: iterate optional values with
   `pairs` over named keys (the yard's close left its window open this way).
 - `follow()` must react to a _move_ of the linked agent (compare with the cached
