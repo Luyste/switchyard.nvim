@@ -124,6 +124,13 @@ local function attach(name)
 	end
 end
 
+-- A tmux session was renamed: the terminal stays attached, only the name changes
+function M.renamed(old, new)
+	if viewer.name == old then
+		viewer.name = new
+	end
+end
+
 function M.is_open()
 	return valid_win(viewer.win)
 end

@@ -64,6 +64,13 @@ function M.new(name, cwd, cmd, callback)
 	end)
 end
 
+-- Rename a session: callback(ok, error_message)
+function M.rename(name, new_name, callback)
+	tmux({ "rename-session", "-t", target(name), new_name }, function(ok, _, stderr)
+		callback(ok, not ok and vim.trim(stderr) or nil)
+	end)
+end
+
 -- End a session and everything running in it: callback(ok, error_message)
 function M.kill(name, callback)
 	tmux({ "kill-session", "-t", target(name) }, function(ok, _, stderr)

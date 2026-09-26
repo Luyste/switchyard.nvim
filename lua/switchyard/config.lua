@@ -28,13 +28,18 @@ M.defaults = {
 			close = "q",
 			actions = ".", -- menu with the selected row's actions
 			help = "?", -- every key of the current view
+			-- Same key, same idea in both views
+			new = "n", -- worktrees: new worktree · agents: new agent in a worktree
+			remove = "D", -- worktrees: remove worktree · agents: stop agent
+			fork = "f", -- worktrees: fork the linked agent here · agents: fork this one elsewhere
 			-- worktrees view
-			new = "n", -- new worktree
-			remove = "D", -- remove worktree
 			start_agent = "a",
 			continue_agent = "c",
-			fork = "f", -- fork the linked agent into this worktree
 			copy_path = "y",
+			-- agents view
+			view = "v", -- in the split
+			external = "g", -- in an external terminal
+			rename = "r", -- its tmux session
 		},
 	},
 }

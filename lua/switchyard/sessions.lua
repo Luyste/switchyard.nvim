@@ -29,6 +29,13 @@ function M.resolve_tmux(session)
 	end)
 end
 
+-- The tmux session of `session` got a new name
+function M.renamed(session, name)
+	tmux_names[session.pid] = name
+	vim.cmd("redrawstatus")
+	vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsChanged" })
+end
+
 -- The tmux session a session runs in, if known
 function M.tmux_name(session)
 	return tmux_names[session.pid] or nil

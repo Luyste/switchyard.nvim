@@ -44,12 +44,26 @@ function M.open(opts)
 		end
 	end
 
+	-- Opened from a float (the yard): right below it, or above when there's no
+	-- room, so both stay readable. Otherwise centered.
+	local row = math.max(1, math.floor((vim.o.lines - #items) / 2) - 3)
+	local col = math.floor((vim.o.columns - width) / 2)
+	local anchor = vim.api.nvim_win_get_config(from)
+	if anchor.relative ~= "" then
+		local below = anchor.row + anchor.height + 2
+		if below + #items + 2 <= vim.o.lines - 2 then
+			row = below
+		elseif anchor.row - #items - 2 >= 0 then
+			row = anchor.row - #items - 2
+		end
+		col = anchor.col
+	end
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		width = width,
 		height = #items,
-		row = math.max(1, math.floor((vim.o.lines - #items) / 2) - 3),
-		col = math.floor((vim.o.columns - width) / 2),
+		row = row,
+		col = col,
 		style = "minimal",
 		border = "rounded",
 		zindex = 100, -- above the yard (50): same-level floats overlap badly in Neovide

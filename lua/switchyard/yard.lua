@@ -504,6 +504,36 @@ local function with_adapter(callback)
 	})
 end
 
+-- Choose one of this repo's worktrees (the current one first, `except` left
+-- out), or create a new one. callback(worktree): { path, branch }
+local function with_worktree(title, except, callback)
+	local list = vim.tbl_filter(function(wt)
+		return wt.path ~= except
+	end, state.worktrees or {})
+	table.sort(list, function(a, b)
+		return a.current and not b.current
+	end)
+	local items = vim.tbl_map(function(wt)
+		return {
+			label = (wt.current and "@ " or "  ") .. wt.branch,
+			action = function()
+				callback(wt)
+			end,
+		}
+	end, list)
+	table.insert(items, {
+		label = "  new worktree…",
+		key = keys().new,
+		action = function()
+			require("switchyard.actions").create_worktree(vim.fn.getcwd(), function(path, branch)
+				refresh()
+				callback({ path = path, branch = branch })
+			end)
+		end,
+	})
+	require("switchyard.menu").open({ title = title, items = items })
+end
+
 -- Per view: { key = name in keys.yard, label, run = function(row), danger?,
 -- any_row? (also works on an empty list; row is nil then) }
 local actions = {
@@ -592,6 +622,74 @@ local actions = {
 			label = "link only, stay here",
 			run = function(row)
 				activate(row, true)
+			end,
+		},
+		{
+			key = "view",
+			label = "view in the split",
+			run = function(row)
+				M.close()
+				require("switchyard.view").show(row.session)
+			end,
+		},
+		{
+			key = "external",
+			label = "open in an external terminal",
+			run = function(row)
+				require("switchyard.view").external(row.session)
+			end,
+		},
+		{
+			key = "new",
+			label = "new agent in a worktree…",
+			any_row = true,
+			run = function()
+				with_worktree("new agent in", nil, function(wt)
+					with_adapter(function(adapter)
+						require("switchyard.launch").new(adapter, wt.path)
+					end)
+				end)
+			end,
+		},
+		{
+			key = "fork",
+			label = "fork into another worktree…",
+			run = function(row)
+				with_worktree("fork " .. agent_name(row.session) .. " into", row.path, function(wt)
+					require("switchyard.launch").fork(row.session, wt.path)
+				end)
+			end,
+		},
+		{
+			key = "rename",
+			label = "rename its tmux session",
+			run = function(row)
+				local s = row.session
+				local old = sessions().tmux_name(s)
+				if not old then
+					return warn(agent_name(s) .. " isn't running in tmux")
+				end
+				vim.ui.input({ prompt = "Rename to: ", default = old }, function(new)
+					if not new or new == "" or new == old then
+						return
+					end
+					new = new:gsub("[%.:]", "_") -- tmux doesn't allow . and : in names
+					require("switchyard.tmux").rename(old, new, function(ok, err)
+						if not ok then
+							return warn("tmux: " .. err)
+						end
+						require("switchyard.view").renamed(old, new)
+						sessions().renamed(s, new)
+					end)
+				end)
+			end,
+		},
+		{
+			key = "remove",
+			label = "stop agent",
+			danger = true,
+			run = function(row)
+				require("switchyard.actions").stop_agent(row.session)
 			end,
 		},
 	},

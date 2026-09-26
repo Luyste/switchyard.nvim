@@ -16,7 +16,7 @@ function M.confirm(title, yes_label, on_yes)
 end
 
 -- Ask for a branch name and create a worktree for it (the editor stays put).
--- on_done(path)
+-- on_done(path, branch)
 function M.create_worktree(cwd, on_done)
 	vim.ui.input({ prompt = "New branch: " }, function(branch)
 		if not branch or branch == "" then
@@ -29,7 +29,7 @@ function M.create_worktree(cwd, on_done)
 			end
 			vim.notify("switchyard: created " .. branch)
 			if on_done then
-				on_done(path)
+				on_done(path, branch)
 			end
 		end)
 	end)

@@ -205,6 +205,14 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
     actions) and `?` (all keys of the view) are built from it: a new action
     shows up everywhere. `a`/`c` ask which adapter only when several are
     installed. menu.lua returns focus to the window it was opened from.
+    Menus opened from a float sit below it (above when there's no room);
+    worktree choices end with "new worktree…".
+  - No "move" action: linking only changes where the editor's prompts go;
+    moving an agent = `f` fork into a worktree (or "new worktree…") + optionally
+    `D` on the original. A real move isn't generic (pi-worktrunk has a
+    `worktrunk` tool but no switch command; Claude Code's plugin only has
+    `/wt-switch-create`; pi-nvim delivers socket messages as user messages, not
+    slash commands). Could return later as an optional adapter feature.
   - Kept: highlights, selection per view by row key, cursor hidden + column
     locked, closes when focus goes to a normal window, returns to the origin
     window, redraws on SwitchyardSessionsChanged / VimResized.
@@ -253,9 +261,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 
 ### Next steps (in this order)
 
-1. **Yard part 2 — actions per view** (worktrees view done: `n` `D` `a` `c` `f` `y`;
-   agents view next: `D` stop, `r` rename, `v`/`g` view, `f` fork to a worktree,
-   `m` move; then `p` projects) (row under cursor is the subject;
+1. **Yard part 2 — actions per view** (done: worktrees `n` `D` `a` `c` `f` `y`;
+   agents `v` `g` `n` `f` `r` `D`; no `m`, see "No move action"). Left: `p` projects inside the yard;
+   `N`/`F` come with dispatch, `s` with the prompt builder) (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
    | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -270,7 +278,6 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    | `F`                             | —                                        | spin off: new worktree + fork this agent into it                                      |
    | `v` / `g`                       | —                                        | view in split / external terminal                                                     |
    | `s`                             | —                                        | prompt builder aimed at this agent                                                    |
-   | `m`                             | —                                        | move: pick worktree, ask the agent to switch via the worktrunk tool                   |
    | `r`                             | —                                        | rename tmux session (update the name cache)                                           |
    | `y`                             | copy path                                | —                                                                                     |
    | `p`                             | projects (switch repo)                   | projects                                                                              |
