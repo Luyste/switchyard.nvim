@@ -26,7 +26,7 @@ anything, then **inspect the actual code**: some items below are marked
   `mouse on`, `window-size latest`, `escape-time 10`, `status off`).
 - Plugin repo checkout: `~/personal/projects/switchyard/` (loaded via
   runtimepath from my config when present, else `vim.pack` from GitHub
-  `Luyste/switchyard.nvim`).
+  `Luyste/switchyard`).
 - My config loads it in `~/.config/nvim/lua/plugins/switchyard.lua`:
   - `require("switchyard").setup({})`
   - A `User SwitchyardSwitched` autocmd that opens nvim-tree (inside
