@@ -30,6 +30,16 @@ function M.following_edits()
 	return package.loaded["switchyard.live"] ~= nil and require("switchyard.live").following_edits()
 end
 
+-- The prompt builder: write a prompt for the linked agent (the draft is kept)
+function M.prompt()
+	require("switchyard.prompt").open()
+end
+
+-- For statuslines: "DRAFT" while a prompt draft waits. Cheap, no I/O.
+function M.draft_status()
+	return package.loaded["switchyard.prompt"] and require("switchyard.prompt").draft_status() or ""
+end
+
 function M.link_here()
 	require("switchyard.sessions").link_here()
 end

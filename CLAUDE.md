@@ -306,7 +306,14 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   global key (I'll map Cmd+Shift+D in n + x mode).
 - Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
 
-3. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
+3. **Prompt builder** — part 1 done (prompt.lua: one float, target in the
+   title, grows with wrapped text up to 8 lines, Enter sends / Shift+Enter or
+   Ctrl-J new line, Esc = normal mode, q/Esc in normal = close, Ctrl-X clear;
+   draft = one hidden buffer that survives closing; the window **disappears on
+   focus loss**, my statusline shows DRAFT via `draft_status()`; Cmd+L opens).
+   Order from here: (2) contexts, (3) targets + `s` + hand-over, (4) dispatch
+   as the "new worktree" target (`N`, `dispatch()`). Original design notes:
+   (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
     the source) but with a persistent draft and multiple contexts:
 
