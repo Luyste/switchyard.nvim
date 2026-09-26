@@ -291,7 +291,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    - With several adapters installed, ask which one (menu); with one, use it.
    - Later: agent state (working / waiting) from pi-worktrunk's `wt list`
      markers; lock marker for locked worktrees.
-2. **Dispatch** (after yard part 2; shares code with spin-off):
+2. **Dispatch** — done as the prompt builder's target (see step 3). Original notes:
 
 - Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
   positional messages: `pi [options] [--] [@files...] [messages...]`),
@@ -330,7 +330,13 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    `tmux.paste` (load-buffer from stdin + paste-buffer -p, no Enter) into the
    agent's input, then the viewer shows it. Cross-worktree paths are absolute
    (no "(worktree <branch>)" suffix yet).
-   Order from here: (4) dispatch
+   Part 4 done: dispatch = the builder's "new worktree + agent" target
+   (Ctrl-T item, yard `N` in both views, public `dispatch()` also in visual
+   mode, Cmd+Shift+D). Enter asks for the branch (suggested: slug of the first
+   line), creates it with worktrunk (base: worktrunk's default), starts the
+   agent there via `adapter.task_cmd(task)` (pi: `{ "pi", task }`); no link,
+   no switch. Not done: choosing the base (current worktree instead of default).
+   Spin-off = `f` in the agents view → "new worktree…".
    as the "new worktree" target (`N`, `dispatch()`). Original design notes:
    (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in

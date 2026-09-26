@@ -19,6 +19,7 @@ local state = {
 	contexts = {},
 	origin_buf = nil, -- the buffer the builder was opened from (Ctrl-F adds it)
 	target = nil, -- a chosen agent for this prompt (Ctrl-T, the yard's `s`); nil = the linked one
+	dispatch = false, -- the target is a new worktree with a new agent (dispatch)
 	shown = nil, -- the target as the title shows it (looked up on open/choose, not per keystroke)
 }
 
@@ -67,6 +68,9 @@ local function name_of(s)
 end
 
 local function title()
+	if state.dispatch then
+		return { { " → ", "SwitchyardDim" }, { "new worktree + agent ", "SwitchyardHeading" }, { "(dispatch) ", "SwitchyardDim" } }
+	end
 	local s = state.shown
 	if not s then
 		return { { " → no linked agent (link one in the yard, or ^T) ", "SwitchyardDanger" } }
@@ -297,8 +301,50 @@ local function clear()
 	layout()
 end
 
+-- A branch name from the task's first line: "Add dark mode!" -> "add-dark-mode"
+function M.slug(text)
+	local first = (text:match("[^\n]+") or ""):lower()
+	local slug = first:gsub("[^%w]+", "-"):gsub("^%-+", ""):sub(1, 40):gsub("%-+$", "")
+	return slug
+end
+
+-- Dispatch: create a worktree, start an agent there with the prompt as its
+-- task. The editor and the link stay where they are.
+local function dispatch()
+	local text = draft_text()
+	if text == "" then
+		return vim.notify("switchyard: write the task first", vim.log.levels.WARN)
+	end
+	local cwd = vim.fn.getcwd()
+	M.close()
+	vim.ui.input({ prompt = "Branch for the task: ", default = M.slug(text) }, function(branch)
+		if not branch or branch == "" then
+			return M.open() -- back to the draft
+		end
+		require("switchyard.actions").with_adapter(function(adapter)
+			if not adapter.task_cmd then
+				return vim.notify("switchyard: " .. adapter.name .. " can't start with a task", vim.log.levels.WARN)
+			end
+			vim.api.nvim_echo({ { "switchyard: creating " .. branch .. " …" } }, false, {})
+			require("switchyard.worktrunk").create(cwd, branch, function(path, err)
+				if not path then
+					return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
+				end
+				-- Contexts come from this worktree: absolute paths for the new one
+				local task = message({ cwd = path })
+				require("switchyard.launch").start(adapter, adapter.task_cmd(task), "task on " .. branch, path)
+				clear()
+				state.dispatch = false
+			end)
+		end)
+	end)
+end
+
 -- Send the draft to the target; cleared once it's sent
 function M.send()
+	if state.dispatch then
+		return dispatch()
+	end
 	local s = target()
 	if draft_text() == "" and #state.contexts == 0 then
 		return
@@ -353,29 +399,33 @@ local function choose_target()
 		local agents = vim.tbl_filter(function(s)
 			return branch_of[s.cwd] ~= nil
 		end, sessions.all())
-		if #agents == 0 then
-			return vim.notify("switchyard: no agents in this repo", vim.log.levels.WARN)
-		end
-		require("switchyard.menu").open({
-			title = "send this prompt to",
-			items = vim.tbl_map(function(s)
-				return {
-					label = name_of(s) .. " · " .. branch_of[s.cwd],
-					key = s.pid == sessions.linked_pid() and "linked" or nil,
-					action = function()
-						state.target = s
-						state.shown = s
-						layout()
-					end,
-				}
-			end, agents),
+		local items = vim.tbl_map(function(s)
+			return {
+				label = name_of(s) .. " · " .. branch_of[s.cwd],
+				key = s.pid == sessions.linked_pid() and "linked" or nil,
+				action = function()
+					state.target, state.shown, state.dispatch = s, s, false
+					layout()
+				end,
+			}
+		end, agents)
+		table.insert(items, {
+			label = "new worktree + agent (dispatch)",
+			action = function()
+				state.dispatch = true
+				layout()
+			end,
 		})
+		require("switchyard.menu").open({ title = "send this prompt to", items = items })
 	end)
 end
 
 -- Ctrl-O: hand the prompt over: paste it into the agent's own input (in tmux),
 -- without sending, and show the agent so you can finish it there
 local function hand_over()
+	if state.dispatch then
+		return vim.notify("switchyard: a dispatch has no agent yet to hand over to", vim.log.levels.WARN)
+	end
 	local s = target()
 	if draft_text() == "" and #state.contexts == 0 then
 		return
@@ -477,7 +527,13 @@ end
 
 -- Open the builder aimed at `session` for this prompt (the link stays)
 function M.open_for(session)
-	state.target = session
+	state.target, state.dispatch = session, false
+	M.open()
+end
+
+-- Open the builder for a dispatch: the prompt becomes a new agent's task
+function M.open_dispatch()
+	state.dispatch = true
 	M.open()
 end
 

@@ -15,6 +15,11 @@ function M.new_cmd()
 	return { "pi" }
 end
 
+-- A new session that starts on `task` right away (pi takes messages as arguments)
+function M.task_cmd(task)
+	return { "pi", task }
+end
+
 function M.continue_cmd()
 	return { "pi", "--continue" }
 end

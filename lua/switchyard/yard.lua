@@ -483,25 +483,8 @@ local function warn(message)
 	vim.notify("switchyard: " .. message, vim.log.levels.WARN)
 end
 
--- The adapter to start: the only installed one, or ask. callback(adapter)
 local function with_adapter(callback)
-	local list = require("switchyard.adapters").active()
-	if #list == 0 then
-		return warn("no agents installed")
-	elseif #list == 1 then
-		return callback(list[1])
-	end
-	require("switchyard.menu").open({
-		title = "which agent?",
-		items = vim.tbl_map(function(adapter)
-			return {
-				label = adapter.name,
-				action = function()
-					callback(adapter)
-				end,
-			}
-		end, list),
-	})
+	require("switchyard.actions").with_adapter(callback)
 end
 
 -- Choose one of this repo's worktrees (the current one first, `except` left
@@ -558,6 +541,15 @@ local actions = {
 			any_row = true,
 			run = function()
 				require("switchyard.actions").create_worktree(vim.fn.getcwd(), refresh)
+			end,
+		},
+		{
+			key = "dispatch",
+			label = "dispatch: a task for a new agent in a new worktree",
+			any_row = true,
+			run = function()
+				M.close()
+				require("switchyard.prompt").open_dispatch()
 			end,
 		},
 		{
@@ -658,6 +650,15 @@ local actions = {
 				with_worktree("fork " .. agent_name(row.session) .. " into", row.path, function(wt)
 					require("switchyard.launch").fork(row.session, wt.path)
 				end)
+			end,
+		},
+		{
+			key = "dispatch",
+			label = "dispatch: a task for a new agent in a new worktree",
+			any_row = true,
+			run = function()
+				M.close()
+				require("switchyard.prompt").open_dispatch()
 			end,
 		},
 		{
@@ -776,10 +777,12 @@ function M.close()
 	end
 	state.win, state.buf, state.input_win, state.input_buf = nil, nil, nil, nil
 	state.filter = ""
+	-- Before going back: returning to the viewer starts typing there again
+	-- (its BufEnter), which a later stopinsert would undo
+	vim.cmd.stopinsert()
 	if inside and valid(state.origin) then
 		vim.api.nvim_set_current_win(state.origin)
 	end
-	vim.cmd.stopinsert()
 end
 
 local function set_keymaps()
@@ -872,6 +875,7 @@ function M.open()
 		return vim.api.nvim_set_current_win(state.win)
 	end
 	view = view or require("switchyard.config").options.yard.view
+	vim.cmd.stopinsert() -- opened from a terminal (the viewer): the yard works in normal mode
 	ui.set_highlights()
 	state.origin = vim.api.nvim_get_current_win()
 	state.filter, state.rows, state.worktrees, state.err = "", {}, nil, nil

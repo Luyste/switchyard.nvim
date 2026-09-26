@@ -112,3 +112,37 @@ prompt.send()
 assert(sent == "look\n\nFile: ctx_test.lua", "whole file as a path, once:\n" .. tostring(sent))
 
 print("file: ok")
+
+---------------------------------------------------------------------------
+-- Dispatch
+---------------------------------------------------------------------------
+
+assert(prompt.slug("Add dark mode!\nmore details") == "add-dark-mode", "slug from the first line")
+assert(prompt.slug("  --Fix: the parser's bug (#12)  ") == "fix-the-parser-s-bug-12", "slug cleans up")
+
+local fake_pi = { name = "pi", task_cmd = function(task) return { "pi", task } end }
+require("switchyard.adapters").active = function()
+	return { fake_pi }
+end
+local created, started
+require("switchyard.worktrunk").create = function(_, branch, callback)
+	created = branch
+	callback("/tmp/wt-" .. branch)
+end
+require("switchyard.launch").start = function(_, cmd, _, cwd)
+	started = { cmd = cmd, cwd = cwd }
+end
+vim.ui.input = function(opts, callback)
+	callback(opts.default) -- accept the suggested branch
+end
+
+vim.api.nvim_set_current_win(editor)
+prompt.open_dispatch()
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Add dark mode", "to the settings page" })
+prompt.send()
+assert(created == "add-dark-mode", "worktree from the suggested branch")
+assert(started.cwd == "/tmp/wt-add-dark-mode", "agent started in the new worktree")
+assert(started.cmd[2] == "Add dark mode\nto the settings page", "the prompt is its task")
+assert(prompt.draft_status() == "", "draft cleared")
+
+print("dispatch: ok")

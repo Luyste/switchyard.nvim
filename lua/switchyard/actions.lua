@@ -15,6 +15,27 @@ function M.confirm(title, yes_label, on_yes)
 	})
 end
 
+-- The adapter to start: the only installed one, or ask. callback(adapter)
+function M.with_adapter(callback)
+	local list = require("switchyard.adapters").active()
+	if #list == 0 then
+		return vim.notify("switchyard: no agents installed", vim.log.levels.WARN)
+	elseif #list == 1 then
+		return callback(list[1])
+	end
+	require("switchyard.menu").open({
+		title = "which agent?",
+		items = vim.tbl_map(function(adapter)
+			return {
+				label = adapter.name,
+				action = function()
+					callback(adapter)
+				end,
+			}
+		end, list),
+	})
+end
+
 -- Ask for a branch name and create a worktree for it (the editor stays put).
 -- on_done(path, branch)
 function M.create_worktree(cwd, on_done)

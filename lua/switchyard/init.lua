@@ -40,6 +40,16 @@ function M.prompt()
 	prompt.open()
 end
 
+-- Dispatch: write a task for a new agent in a new worktree (in visual mode the
+-- selection comes along as context). The editor and the link stay put.
+function M.dispatch()
+	local prompt = require("switchyard.prompt")
+	if vim.fn.mode():match("^[vV\22]") then
+		prompt.add_selection()
+	end
+	prompt.open_dispatch()
+end
+
 -- Add the current line and its diagnostics to the prompt, and open it
 function M.prompt_line()
 	local prompt = require("switchyard.prompt")

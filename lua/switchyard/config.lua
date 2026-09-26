@@ -31,6 +31,7 @@ M.defaults = {
 			new = "n", -- worktrees: new worktree · agents: new agent in a worktree
 			remove = "D", -- worktrees: remove worktree · agents: stop agent
 			fork = "f", -- worktrees: fork the linked agent here · agents: fork this one elsewhere
+			dispatch = "N", -- a task for a new agent in a new worktree
 			-- worktrees view
 			start_agent = "a",
 			continue_agent = "c",
