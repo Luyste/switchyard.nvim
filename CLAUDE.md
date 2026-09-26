@@ -85,8 +85,8 @@ anything, then **inspect the actual code**: some items below are marked
 - **Dispatch** (fire-and-forget): describe a task → new worktree + agent started
   there with the task as its first message. The editor does NOT switch and the
   link does NOT change; the new worktree + working agent simply appear in the yard.
-- **Starting an agent in the editor's current folder links to it.** (Starting in
-  another worktree from the yard should NOT link — pending, see launch.lua.)
+- **Starting an agent in the editor's current folder links to it.** Starting in
+  another worktree does not link (just a message).
 - **Viewing ≠ linking.** The viewer can show any agent; the link decides where
   prompts go.
 - **Dependencies:** hard dependencies are PROGRAMS only (git, wt, tmux, the
@@ -149,8 +149,10 @@ lua/switchyard/
                              `seen_cwd`; blocked move kept in `follow_to`, retried on
                              BufWritePost), fs_event watch on adapter.watch_dir
                              (debounced 300 ms, fires SwitchyardSessionsChanged)
-  launch.lua                 start/new/continue/fork/pick — agents start in tmux, wait
-                             for registration (poll 500 ms, 30 s), then link
+  launch.lua                 start(adapter, cmd, label, cwd?, cb)/new/continue/fork/pick —
+                             agents start in tmux in `cwd` (default editor cwd), wait for
+                             registration (poll 500 ms, 30 s), then link only if the agent
+                             runs where the editor is (checked then), else "started <name>"
   ui.lua                     shared highlights (linked to standard groups, default=true)
                              + hide/show cursor (guicursor → blended hl), one shared save;
                              badge text color picked by WCAG contrast (Normal fg vs bg)
@@ -163,7 +165,8 @@ lua/switchyard/
   view.lua                   the viewer (split + statusline with agent tabs, cycle,
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
-                             (live: live reload + follow edits; arrival: arrival rules + peek)
+                             (live: live reload + follow edits; arrival: arrival rules + peek;
+                             launch: linking after a start)
 ```
 
 ## Status
@@ -239,14 +242,11 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 
 ### Next steps (in this order)
 
-1. **launch.lua**: `start(adapter, cmd, label, cwd, callback)` — default cwd =
-   editor cwd; only link when cwd == getcwd, otherwise notify "started <name>";
-   `new(adapter, cwd)`, `continue(adapter, cwd)`, `fork(source, cwd)`.
-2. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
+1. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
    via vim.ui.input, remove_worktree(cwd, wt, on_done) (refuse current/main,
    confirm), stop_agent(session, on_done) (tmux kill-session, confirm).
    Confirmations via menu.lua.
-3. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
+2. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
    part 1's layout):
    - ONE floating window, sized to content: width = longest row, clamped
      ~50..90 cols; height = number of rows, capped (~60% of lines). Centered.
@@ -272,7 +272,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
      SwitchyardSessionsChanged redraws. Remove: the filter/normal layouts, the
      detail window, the mode badge, expand/collapse.
    - Iterate on size in real use; aim for "as small as possible".
-4. **Yard part 2 — actions per view** (row under cursor is the subject;
+3. **Yard part 2 — actions per view** (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
    | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -296,7 +296,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    - With several adapters installed, ask which one (menu); with one, use it.
    - Later: agent state (working / waiting) from pi-worktrunk's `wt list`
      markers; lock marker for locked worktrees.
-5. **Dispatch** (after yard part 2; shares code with spin-off):
+4. **Dispatch** (after yard part 2; shares code with spin-off):
 
 - Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
   positional messages: `pi [options] [--] [@files...] [messages...]`),
@@ -315,7 +315,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   global key (I'll map Cmd+Shift+D in n + x mode).
 - Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
 
-6. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
+5. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
     the source) but with a persistent draft and multiple contexts:
 
@@ -344,12 +344,12 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Fork note (currently a separate first message from launch.fork) could move
   in front of the first real prompt.
 
-7. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
+6. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
    in the yard replaces the project picker) and the old keymaps. It calls
    fzf-lua directly, which breaks the dependency rule until then.
-8. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
+7. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.
-9. README, docs, fuzzy matching, polish.
+8. README, docs, fuzzy matching, polish.
 
 Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
 it). Worktree rows may still show the diff size vs the default branch later

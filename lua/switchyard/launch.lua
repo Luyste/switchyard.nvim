@@ -30,10 +30,12 @@ local function wait_for_session(adapter, cwd, known, callback)
 	)
 end
 
--- Start `cmd` for `adapter` in a new tmux session in the current folder,
--- then link to it. callback(session, tmux_name) is optional.
-function M.start(adapter, cmd, label, callback)
-	local cwd = vim.fn.getcwd()
+-- Start `cmd` for `adapter` in a new tmux session in `cwd` (default: the
+-- editor's folder). Links to it when it runs where the editor is, once it has
+-- registered; an agent started in another worktree only gets a message.
+-- callback(session, tmux_name) is optional.
+function M.start(adapter, cmd, label, cwd, callback)
+	cwd = cwd or vim.fn.getcwd()
 	local known = {}
 	for _, s in ipairs(adapter.sessions()) do
 		known[s.pid] = true
@@ -57,7 +59,12 @@ function M.start(adapter, cmd, label, callback)
 						vim.log.levels.WARN
 					)
 				end
-				sessions.link(s)
+				-- Compared now, not at launch: the editor may have switched meanwhile
+				if s.cwd == vim.fn.getcwd() then
+					sessions.link(s)
+				else
+					vim.notify(("switchyard: started %s in %s"):format(name, vim.fn.fnamemodify(cwd, ":t")))
+				end
 				if callback then
 					callback(s, name)
 				end
@@ -66,22 +73,23 @@ function M.start(adapter, cmd, label, callback)
 	end)
 end
 
-function M.new(adapter)
-	M.start(adapter, adapter.new_cmd(), "new " .. adapter.name)
+-- `cwd` is optional everywhere: default the editor's folder
+function M.new(adapter, cwd)
+	M.start(adapter, adapter.new_cmd(), "new " .. adapter.name, cwd)
 end
 
-function M.continue(adapter)
-	M.start(adapter, adapter.continue_cmd(), adapter.name .. " (continue)")
+function M.continue(adapter, cwd)
+	M.start(adapter, adapter.continue_cmd(), adapter.name .. " (continue)", cwd)
 end
 
--- Fork a running session from another folder into the current one
-function M.fork(source)
+-- Fork a running session into `cwd`
+function M.fork(source, cwd)
 	local cmd = source.adapter.fork_cmd and source.adapter.fork_cmd(source)
 	if not cmd then
 		return vim.notify("switchyard: can't fork " .. sessions.describe(source), vim.log.levels.WARN)
 	end
-	local here = vim.fn.getcwd()
-	M.start(source.adapter, cmd, "fork of " .. sessions.describe(source), function(s)
+	local here = cwd or vim.fn.getcwd()
+	M.start(source.adapter, cmd, "fork of " .. sessions.describe(source), here, function(s)
 		-- The history is full of paths from the source worktree: tell the fork where it is now
 		local note = (
 			"Note: this session was forked from %s and now runs in %s. "
