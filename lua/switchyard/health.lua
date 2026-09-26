@@ -36,13 +36,6 @@ function M.check()
 		vim.health.info("follow edits: not available (needs recursive folder watching: macOS or Windows)")
 	end
 
-	for _, dir in ipairs(opts.projects_dirs) do
-		if vim.fn.isdirectory(dir) == 1 then
-			vim.health.ok("projects dir: " .. dir)
-		else
-			vim.health.warn("projects dir doesn't exist: " .. dir, "Fix or remove it in projects_dirs in setup()")
-		end
-	end
 
 	vim.health.start("switchyard: agents")
 	for _, name in ipairs(opts.agents) do

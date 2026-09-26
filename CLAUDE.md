@@ -28,7 +28,7 @@ anything, then **inspect the actual code**: some items below are marked
   runtimepath from my config when present, else `vim.pack` from GitHub
   `Luyste/switchyard.nvim`).
 - My config loads it in `~/.config/nvim/lua/plugins/switchyard.lua`:
-  - `require("switchyard").setup({ projects_dirs = { "~/personal/projects/", "~/work/projects/" } })`
+  - `require("switchyard").setup({})`
   - A `User SwitchyardSwitched` autocmd that opens nvim-tree (inside
     `vim.schedule`) and `wincmd p`.
   - Keymaps via a helper `sy(fn)` that returns `function() require("switchyard")[fn]() end`
@@ -95,6 +95,8 @@ anything, then **inspect the actual code**: some items below are marked
   lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
   simply not offered, and is reported by the health check. Pluggable features
   follow the `terminal` pattern: `"auto" | <name> | function(...)`.
+- **One project per yard.** The yard shows the current repo's worktrees and
+  agents; for another repo you step out (no project switching in the plugin).
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.
@@ -112,13 +114,13 @@ anything, then **inspect the actual code**: some items below are marked
 plugin/switchyard.lua        :Switchyard → open the yard (guarded by vim.g.loaded_switchyard)
 lua/switchyard/
   init.lua                   setup(opts) → config.setup + sessions.setup; public API:
-                             switch, open_yard, pick_worktree, pick_project, pick_agent,
+                             switch, open_yard, pick_worktree, pick_agent,
                              start_agent, status, toggle_view, open_external
                              (planned: next_agent, prev_agent)
   config.lua                 defaults + setup (unknown-option warning; lists replaced
-                             not merged; projects_dirs string→list, expanded)
+                             not merged)
   health.lua                 :checkhealth switchyard — programs (git, wt, tmux),
-                             projects_dirs, external terminal, agents/adapters
+                             external terminal, follow edits, agents/adapters
   util.lua                   run(cmd, {cwd}, cb(ok, stdout, stderr)) — async, pcall'd
   worktrunk.lua              list(cwd, cb) via `wt list --format=json` (luanil),
                              normalized to {branch, path, current, main, symbols};
@@ -127,7 +129,6 @@ lua/switchyard/
   projects.lua               switch(dir): refuse on unsaved, tabonly/only/enew, delete
                              file buffers (buftype==""), stop LSP clients, cd, redraw,
                              notify, fire User SwitchyardSwitched {from,to};
-                             list(cb): repos (.git dirs only) in projects_dirs via find
   pickers.lua                worktrees/projects pickers (fzf-lua direct if installed,
                              else vim.ui.select). To be REPLACED by the yard.
   tmux.lua                   list, free_name, new(name, cwd, cmd, cb), kill,
@@ -192,9 +193,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   Tab toggles, remembered while Neovim runs (`yard.view` = first view):
   - worktrees (current repo): number, `@`, branch, wt symbols, agents on the
     right (`● linked +n` / `● n`);
-  - agents (all repos, from `sessions.all()`): number, `●` + tmux name, branch
-    (this repo) or folder name (other repos) on the right; linked first, then
-    this repo's, then by folder.
+  - agents (this repo only: one project per yard): number, `●` + tmux name,
+    branch on the right; linked first, then by worktree. Agents whose folder is
+    gone (kept after "remove worktree") show as "removed worktree".
   - Keys (`keys.yard`): Enter (worktree: switch · agent: go to = switch + link),
     Shift+Enter (worktree: peek · agent: link only, yard stays), `1`–`9` = Enter
     on row n, j/k and Ctrl-N/P, Tab, `/` filter (a 1-line float above the list
@@ -262,7 +263,8 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 ### Next steps (in this order)
 
 1. **Yard part 2 — actions per view** (done: worktrees `n` `D` `a` `c` `f` `y`;
-   agents `v` `g` `n` `f` `r` `D`; no `m`, see "No move action"). Left: `p` projects inside the yard;
+   agents `v` `g` `n` `f` `r` `D`; no `m`, see "No move action"; no `p`: one
+   project per yard, for another repo you step out of the plugin;
    `N`/`F` come with dispatch, `s` with the prompt builder) (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
@@ -280,7 +282,6 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    | `s`                             | —                                        | prompt builder aimed at this agent                                                    |
    | `r`                             | —                                        | rename tmux session (update the name cache)                                           |
    | `y`                             | copy path                                | —                                                                                     |
-   | `p`                             | projects (switch repo)                   | projects                                                                              |
    | Tab                             | agents view                              | worktrees view                                                                        |
    | `1`–`9`, `/`, `?`, `.`, `q`/Esc | same in both                             | same in both                                                                          |
    - With several adapters installed, ask which one (menu); with one, use it.
@@ -335,7 +336,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   in front of the first real prompt.
 
 4. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
-   in the yard replaces the project picker) and the old keymaps. It calls
+   is gone: one project per yard) and the old keymaps. It calls
    fzf-lua directly, which breaks the dependency rule until then.
 5. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.

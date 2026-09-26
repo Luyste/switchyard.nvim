@@ -1,6 +1,6 @@
 -- The yard: one small floating window with two views.
 --   worktrees: the current repo's worktrees, with a summary of their agents
---   agents:    every running agent, in any repo
+--   agents:    this repo's running agents
 -- Tab switches views; `/` shows a filter line above the list while filtering.
 local ui = require("switchyard.ui")
 
@@ -19,6 +19,7 @@ local state = {
 	worktrees = nil, -- the last `wt list` result
 	err = nil,
 	rows = {}, -- one entry per list line
+	total = 0, -- rows in this view without the filter
 	filter = "",
 	selected = {}, -- per view: the key of the selected row (path or "pid:<n>")
 	origin = nil, -- the window the yard was opened from
@@ -95,6 +96,7 @@ local function agent_name(session)
 end
 
 local function worktree_rows(all)
+	state.total = #(state.worktrees or {})
 	local rows = {}
 	for _, wt in ipairs(state.worktrees or {}) do
 		local agents = vim.tbl_filter(function(s)
@@ -112,30 +114,31 @@ local function worktree_rows(all)
 	return rows
 end
 
--- All agents: the linked one first, then this repo's, then by folder
+-- This repo's agents: the linked one first, then by worktree. Agents whose
+-- folder is gone (kept running after "remove worktree") are listed too, so
+-- they can still be forked or stopped.
 local function agent_rows(all)
 	local branch_of = {}
 	for _, wt in ipairs(state.worktrees or {}) do
 		branch_of[wt.path] = wt.branch
 	end
+	local mine = vim.tbl_filter(function(s)
+		return branch_of[s.cwd] ~= nil or vim.fn.isdirectory(s.cwd) == 0
+	end, all)
 	local linked = sessions().linked_pid()
-	table.sort(all, function(a, b)
+	table.sort(mine, function(a, b)
 		if (a.pid == linked) ~= (b.pid == linked) then
 			return a.pid == linked
-		end
-		local here_a, here_b = branch_of[a.cwd] ~= nil, branch_of[b.cwd] ~= nil
-		if here_a ~= here_b then
-			return here_a
 		end
 		if a.cwd ~= b.cwd then
 			return a.cwd < b.cwd
 		end
 		return a.pid < b.pid
 	end)
+	state.total = #mine -- for the filter's "n / total"
 	local rows = {}
-	for _, s in ipairs(all) do
-		-- This repo: the branch. Another repo: the folder (holds the repo's name)
-		local where = branch_of[s.cwd] or vim.fn.fnamemodify(s.cwd, ":t")
+	for _, s in ipairs(mine) do
+		local where = branch_of[s.cwd] or "removed worktree"
 		if state.filter == "" or match(agent_name(s)) or match(where) then
 			table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
 		end
@@ -243,14 +246,13 @@ local function update_count()
 	if not valid(state.input_win) then
 		return
 	end
-	local total = view == "worktrees" and #(state.worktrees or {}) or #sessions().all()
 	vim.api.nvim_buf_clear_namespace(state.input_buf, ns, 0, -1)
 	vim.api.nvim_buf_set_extmark(state.input_buf, ns, 0, 0, {
 		virt_text = { { "› ", "SwitchyardKey" } },
 		virt_text_pos = "inline",
 	})
 	vim.api.nvim_buf_set_extmark(state.input_buf, ns, 0, 0, {
-		virt_text = { { ("%d / %d "):format(#state.rows, total), "SwitchyardDim" } },
+		virt_text = { { ("%d / %d "):format(#state.rows, state.total), "SwitchyardDim" } },
 		virt_text_pos = "right_align",
 	})
 end
