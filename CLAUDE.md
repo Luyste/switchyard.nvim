@@ -200,6 +200,11 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
     on row n, j/k and Ctrl-N/P, Tab, `/` filter (a 1-line float above the list
     only while filtering; Enter acts, Esc clears and removes it), Ctrl-R
     refresh, `q`/Esc close. Footer hints per view.
+  - One action list per view in yard.lua (`actions`: key name in `keys.yard`,
+    label, run(row), danger, any_row). Keymaps, the `.` menu (the row's
+    actions) and `?` (all keys of the view) are built from it: a new action
+    shows up everywhere. `a`/`c` ask which adapter only when several are
+    installed. menu.lua returns focus to the window it was opened from.
   - Kept: highlights, selection per view by row key, cursor hidden + column
     locked, closes when focus goes to a normal window, returns to the origin
     window, redraws on SwitchyardSessionsChanged / VimResized.
@@ -248,12 +253,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 
 ### Next steps (in this order)
 
-1. **Yard: `?` overlay and `.` action menu** (rest of the compact yard): `?`
-   = overlay with all keys of the current view; `.` = menu.lua with the row's
-   actions and their keys. Agent state (waiting / working / idle from
-   pi-worktrunk markers) and its sort order come later. Iterate on size in real
-   use; aim for "as small as possible".
-2. **Yard part 2 — actions per view** (row under cursor is the subject;
+1. **Yard part 2 — actions per view** (worktrees view done: `n` `D` `a` `c` `f` `y`;
+   agents view next: `D` stop, `r` rename, `v`/`g` view, `f` fork to a worktree,
+   `m` move; then `p` projects) (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
    | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -277,7 +279,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    - With several adapters installed, ask which one (menu); with one, use it.
    - Later: agent state (working / waiting) from pi-worktrunk's `wt list`
      markers; lock marker for locked worktrees.
-3. **Dispatch** (after yard part 2; shares code with spin-off):
+2. **Dispatch** (after yard part 2; shares code with spin-off):
 
 - Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
   positional messages: `pi [options] [--] [@files...] [messages...]`),
@@ -296,7 +298,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   global key (I'll map Cmd+Shift+D in n + x mode).
 - Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
 
-4. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
+3. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
     the source) but with a persistent draft and multiple contexts:
 
@@ -325,12 +327,12 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Fork note (currently a separate first message from launch.fork) could move
   in front of the first real prompt.
 
-5. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
+4. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
    in the yard replaces the project picker) and the old keymaps. It calls
    fzf-lua directly, which breaks the dependency rule until then.
-6. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
+5. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.
-7. README, docs, fuzzy matching, polish.
+6. README, docs, fuzzy matching, polish.
 
 Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
 it). Worktree rows may still show the diff size vs the default branch later

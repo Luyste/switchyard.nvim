@@ -35,15 +35,45 @@ function M.create_worktree(cwd, on_done)
 	end)
 end
 
+-- End the tmux session `session` runs in (without asking). callback(ok)
+local function kill(session, callback)
+	local sessions = require("switchyard.sessions")
+	local tmux = require("switchyard.tmux")
+	local function stop(name)
+		if not name then
+			vim.notify("switchyard: " .. sessions.describe(session) .. " isn't running in tmux", vim.log.levels.WARN)
+			return callback(false)
+		end
+		tmux.kill(name, function(ok, err)
+			if not ok then
+				vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
+			end
+			callback(ok, name)
+		end)
+	end
+	local known = sessions.tmux_name(session)
+	if known then
+		return stop(known)
+	end
+	tmux.session_of_pid(session.pid, stop)
+end
+
 -- Remove worktree `wt` after confirming. Never the current or the main one.
-function M.remove_worktree(cwd, wt, on_done)
+-- `agents`: the sessions working in it (optional). You choose whether they
+-- stop too, or keep running (with their history) to continue elsewhere.
+function M.remove_worktree(cwd, wt, on_done, agents)
 	if wt.current then
 		return vim.notify("switchyard: you're in this worktree. Switch away first.", vim.log.levels.WARN)
 	end
 	if wt.main then
 		return vim.notify("switchyard: the main worktree can't be removed.", vim.log.levels.WARN)
 	end
-	M.confirm("remove worktree " .. wt.branch .. "?", "Remove " .. wt.branch, function()
+	agents = agents or {}
+
+	local function remove(stop_agents)
+		for _, session in ipairs(stop_agents and agents or {}) do
+			kill(session, function() end)
+		end
 		vim.api.nvim_echo({ { "switchyard: removing " .. wt.branch .. " …" } }, false, {})
 		worktrunk.remove(cwd, wt.branch, function(ok, err)
 			if not ok then
@@ -54,35 +84,45 @@ function M.remove_worktree(cwd, wt, on_done)
 				on_done()
 			end
 		end)
-	end)
+	end
+
+	local items = { { label = "No", action = function() end } }
+	if #agents == 0 then
+		table.insert(items, { label = "Remove " .. wt.branch, danger = true, action = remove })
+	else
+		local count = #agents == 1 and "its agent" or (#agents .. " agents")
+		table.insert(items, {
+			label = "Remove " .. wt.branch .. ", keep " .. count .. " running",
+			danger = true,
+			action = function()
+				remove(false)
+			end,
+		})
+		table.insert(items, {
+			label = "Remove " .. wt.branch .. " and stop " .. count,
+			danger = true,
+			action = function()
+				remove(true)
+			end,
+		})
+	end
+	require("switchyard.menu").open({ title = "remove worktree " .. wt.branch .. "?", items = items })
 end
 
 -- Stop an agent after confirming, by ending its tmux session (so its shell
 -- goes too). Agents outside tmux aren't ours to kill.
 function M.stop_agent(session, on_done)
-	local sessions = require("switchyard.sessions")
-	local tmux = require("switchyard.tmux")
-	local function stop(name)
-		if not name then
-			return vim.notify("switchyard: " .. sessions.describe(session) .. " isn't running in tmux", vim.log.levels.WARN)
-		end
-		M.confirm("stop " .. name .. "?", "Stop " .. name, function()
-			tmux.kill(name, function(ok, err)
-				if not ok then
-					return vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
-				end
-				vim.notify("switchyard: stopped " .. name)
+	local name = require("switchyard.sessions").tmux_name(session) or session.adapter.name
+	M.confirm("stop " .. name .. "?", "Stop " .. name, function()
+		kill(session, function(ok, killed)
+			if ok then
+				vim.notify("switchyard: stopped " .. killed)
 				if on_done then
 					on_done()
 				end
-			end)
+			end
 		end)
-	end
-	local known = sessions.tmux_name(session)
-	if known then
-		return stop(known)
-	end
-	tmux.session_of_pid(session.pid, stop)
+	end)
 end
 
 return M

@@ -26,6 +26,15 @@ M.defaults = {
 			filter = "/",
 			refresh = "<C-r>",
 			close = "q",
+			actions = ".", -- menu with the selected row's actions
+			help = "?", -- every key of the current view
+			-- worktrees view
+			new = "n", -- new worktree
+			remove = "D", -- remove worktree
+			start_agent = "a",
+			continue_agent = "c",
+			fork = "f", -- fork the linked agent into this worktree
+			copy_path = "y",
 		},
 	},
 }

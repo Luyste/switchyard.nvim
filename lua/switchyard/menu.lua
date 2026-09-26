@@ -10,6 +10,7 @@ local ns = vim.api.nvim_create_namespace("switchyard_menu")
 -- opts.on_cancel: optional, called when closed without choosing
 function M.open(opts)
 	ui.set_highlights()
+	local from = vim.api.nvim_get_current_win() -- focus goes back here
 	local items = opts.items
 
 	local label_width = 0
@@ -21,7 +22,7 @@ function M.open(opts)
 	-- Lines: " 1  label ............ key"
 	local lines, marks = {}, {}
 	for i, item in ipairs(items) do
-		local number = (" %d  "):format(i)
+		local number = ((#items > 9 and "%2d" or " %d") .. "  "):format(i) -- aligned past 9
 		local key = item.key and (item.key .. " ") or ""
 		local gap = width - vim.fn.strdisplaywidth(number .. item.label) - vim.fn.strdisplaywidth(key)
 		lines[i] = number .. item.label .. string.rep(" ", math.max(gap, 1)) .. key
@@ -51,6 +52,7 @@ function M.open(opts)
 		col = math.floor((vim.o.columns - width) / 2),
 		style = "minimal",
 		border = "rounded",
+		zindex = 100, -- above the yard (50): same-level floats overlap badly in Neovide
 		title = { { " switchyard ", "SwitchyardHeading" }, { "· " .. opts.title .. " ", "SwitchyardDim" } },
 		title_pos = "left",
 		footer = { { " ⏎ choose  ^N/^P move  1-9 pick  esc cancel ", "SwitchyardDim" } },
@@ -69,6 +71,9 @@ function M.open(opts)
 		ui.show_cursor()
 		if vim.api.nvim_win_is_valid(win) then
 			vim.api.nvim_win_close(win, true)
+		end
+		if vim.api.nvim_win_is_valid(from) then
+			vim.api.nvim_set_current_win(from)
 		end
 	end
 	local function choose(index)

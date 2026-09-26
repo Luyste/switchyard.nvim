@@ -192,8 +192,8 @@ local function title()
 end
 
 local function footer(width)
-	local hints = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  q close "
-		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  q close "
+	local hints = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . actions  ? keys "
+		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  . actions  ? keys "
 	return { { truncate(hints, width - 2), "SwitchyardDim" } }
 end
 
@@ -346,14 +346,10 @@ local function peek(path)
 	end)
 end
 
--- Enter (alt = Shift+Enter) on row `index` (default: the selected one).
+-- Enter (alt = Shift+Enter) on `row`.
 --   worktree: switch (the link moves along) / peek (the link stays)
 --   agent:    go to it (switch to its worktree + link) / link only, stay here
-local function activate(index, alt)
-	local row = state.rows[index or selected_index()]
-	if not row then
-		return
-	end
+local function activate(row, alt)
 	if row.kind == "agent" and alt then
 		sessions().link(row.session)
 		return render()
@@ -438,13 +434,18 @@ local function start_filter()
 		vim.keymap.set("i", key, fn, { buffer = buf, nowait = true, silent = true })
 	end
 	local k = keys()
+	local function act(alt)
+		local row = state.rows[selected_index()]
+		if row then
+			vim.cmd.stopinsert()
+			activate(row, alt)
+		end
+	end
 	map("<CR>", function()
-		vim.cmd.stopinsert()
-		activate()
+		act(false)
 	end)
 	map(k.alt_activate, function()
-		vim.cmd.stopinsert()
-		activate(nil, true)
+		act(true)
 	end)
 	map("<C-n>", function()
 		move(1)
@@ -472,6 +473,176 @@ local function start_filter()
 	})
 	render()
 	vim.cmd("startinsert!")
+end
+
+---------------------------------------------------------------------------
+-- Actions per view. The keys, the `.` menu and the `?` list come from here.
+---------------------------------------------------------------------------
+
+local function warn(message)
+	vim.notify("switchyard: " .. message, vim.log.levels.WARN)
+end
+
+-- The adapter to start: the only installed one, or ask. callback(adapter)
+local function with_adapter(callback)
+	local list = require("switchyard.adapters").active()
+	if #list == 0 then
+		return warn("no agents installed")
+	elseif #list == 1 then
+		return callback(list[1])
+	end
+	require("switchyard.menu").open({
+		title = "which agent?",
+		items = vim.tbl_map(function(adapter)
+			return {
+				label = adapter.name,
+				action = function()
+					callback(adapter)
+				end,
+			}
+		end, list),
+	})
+end
+
+-- Per view: { key = name in keys.yard, label, run = function(row), danger?,
+-- any_row? (also works on an empty list; row is nil then) }
+local actions = {
+	worktrees = {
+		{
+			key = "activate",
+			label = "switch here",
+			run = function(row)
+				activate(row)
+			end,
+		},
+		{
+			key = "alt_activate",
+			label = "peek: switch, keep the link",
+			run = function(row)
+				activate(row, true)
+			end,
+		},
+		{
+			key = "new",
+			label = "new worktree",
+			any_row = true,
+			run = function()
+				require("switchyard.actions").create_worktree(vim.fn.getcwd(), refresh)
+			end,
+		},
+		{
+			key = "start_agent",
+			label = "start an agent here",
+			run = function(row)
+				with_adapter(function(adapter)
+					require("switchyard.launch").new(adapter, row.path)
+				end)
+			end,
+		},
+		{
+			key = "continue_agent",
+			label = "continue the last session here",
+			run = function(row)
+				with_adapter(function(adapter)
+					require("switchyard.launch").continue(adapter, row.path)
+				end)
+			end,
+		},
+		{
+			key = "fork",
+			label = "fork the linked agent here",
+			run = function(row)
+				local linked = sessions().linked()
+				if not linked then
+					return warn("no linked agent to fork")
+				elseif linked.cwd == row.path then
+					return warn("the linked agent already works here")
+				end
+				require("switchyard.launch").fork(linked, row.path)
+			end,
+		},
+		{
+			key = "copy_path",
+			label = "copy path",
+			run = function(row)
+				vim.fn.setreg("+", row.path)
+				vim.fn.setreg('"', row.path)
+				vim.notify("switchyard: copied " .. vim.fn.fnamemodify(row.path, ":~"))
+			end,
+		},
+		{
+			key = "remove",
+			label = "remove worktree",
+			danger = true,
+			run = function(row)
+				require("switchyard.actions").remove_worktree(vim.fn.getcwd(), row.worktree, refresh, row.agents)
+			end,
+		},
+	},
+	agents = {
+		{
+			key = "activate",
+			label = "go to: switch to its worktree and link",
+			run = function(row)
+				activate(row)
+			end,
+		},
+		{
+			key = "alt_activate",
+			label = "link only, stay here",
+			run = function(row)
+				activate(row, true)
+			end,
+		},
+	},
+}
+
+-- Run the current view's action for key name `name` on the selected row
+local function run(name)
+	local row = state.rows[selected_index()]
+	for _, action in ipairs(actions[view]) do
+		if action.key == name and (row or action.any_row) then
+			return action.run(row)
+		end
+	end
+end
+
+-- How a key reads in menus and hints
+local function key_label(name)
+	local key = keys()[name]
+	local pretty = { ["<CR>"] = "⏎", ["<S-CR>"] = "⇧⏎", ["<Tab>"] = "⇥", ["<C-r>"] = "^R" }
+	return pretty[key] or key
+end
+
+-- `.`: the selected row's actions. `?`: every key of this view.
+local function open_menu(all_keys)
+	local row = state.rows[selected_index()]
+	local items = {}
+	for _, action in ipairs(actions[view]) do
+		if row or action.any_row then
+			table.insert(items, {
+				label = action.label,
+				key = key_label(action.key),
+				danger = action.danger,
+				action = function()
+					action.run(row)
+				end,
+			})
+		end
+	end
+	if all_keys then
+		local other = view == "worktrees" and "agents" or "worktrees"
+		for _, nav in ipairs({
+			{ "toggle_view", other .. " view", toggle_view },
+			{ "filter", "filter", start_filter },
+			{ "refresh", "refresh", refresh },
+			{ "close", "close the yard", M.close },
+		}) do
+			table.insert(items, { label = nav[2], key = key_label(nav[1]), action = nav[3] })
+		end
+	end
+	local subject = row and (row.kind == "worktree" and row.worktree.branch or agent_name(row.session)) or view
+	require("switchyard.menu").open({ title = all_keys and (view .. " · keys") or subject, items = items })
 end
 
 ---------------------------------------------------------------------------
@@ -516,17 +687,31 @@ local function set_keymaps()
 	map("<C-p>", function()
 		move(-1)
 	end)
-	map(k.activate, function()
-		activate()
-	end)
-	map(k.alt_activate, function()
-		activate(nil, true)
-	end)
-	for i = 1, 9 do
-		map(tostring(i), function()
-			activate(i)
+	-- Every action key of both views; `run` picks the current view's action
+	local names = {}
+	for _, list in pairs(actions) do
+		for _, action in ipairs(list) do
+			names[action.key] = true
+		end
+	end
+	for name in pairs(names) do
+		map(k[name], function()
+			run(name)
 		end)
 	end
+	for i = 1, 9 do
+		map(tostring(i), function()
+			if state.rows[i] then
+				activate(state.rows[i])
+			end
+		end)
+	end
+	map(k.actions, function()
+		open_menu(false)
+	end)
+	map(k.help, function()
+		open_menu(true)
+	end)
 	map(k.toggle_view, toggle_view)
 	map(k.filter, start_filter)
 	map(k.refresh, refresh)
