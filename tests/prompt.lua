@@ -132,7 +132,7 @@ end
 require("switchyard.launch").start = function(_, cmd, _, cwd)
 	started = { cmd = cmd, cwd = cwd }
 end
-vim.ui.input = function(opts, callback)
+require("switchyard.menu").input = function(opts, callback)
 	callback(opts.default) -- accept the suggested branch
 end
 

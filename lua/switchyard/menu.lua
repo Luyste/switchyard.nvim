@@ -4,6 +4,25 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("switchyard_menu")
 
+-- Where a window of `width` x `height` goes: opened from a float (the yard),
+-- right below it, or above when there's no room, so both stay readable.
+-- Otherwise centered. Returns row, col.
+local function place(from, width, height)
+	local row = math.max(1, math.floor((vim.o.lines - height) / 2) - 3)
+	local col = math.floor((vim.o.columns - width) / 2)
+	local anchor = vim.api.nvim_win_get_config(from)
+	if anchor.relative ~= "" then
+		local below = anchor.row + anchor.height + 2
+		if below + height + 2 <= vim.o.lines - 2 then
+			row = below
+		elseif anchor.row - height - 2 >= 0 then
+			row = anchor.row - height - 2
+		end
+		col = anchor.col
+	end
+	return row, col
+end
+
 -- Show a menu in the yard's style.
 -- opts.title: text in the border
 -- opts.items: list of { label, action, key? (shown on the right), danger? }
@@ -44,21 +63,7 @@ function M.open(opts)
 		end
 	end
 
-	-- Opened from a float (the yard): right below it, or above when there's no
-	-- room, so both stay readable. Otherwise centered.
-	local row = math.max(1, math.floor((vim.o.lines - #items) / 2) - 3)
-	local col = math.floor((vim.o.columns - width) / 2)
-	local anchor = vim.api.nvim_win_get_config(from)
-	if anchor.relative ~= "" then
-		local height = #items + 2 -- + title and hints lines
-		local below = anchor.row + anchor.height + 2
-		if below + height + 2 <= vim.o.lines - 2 then
-			row = below
-		elseif anchor.row - height - 2 >= 0 then
-			row = anchor.row - height - 2
-		end
-		col = anchor.col
-	end
+	local row, col = place(from, width, #items + 2) -- + title and hints lines
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		width = width,
@@ -132,6 +137,77 @@ function M.open(opts)
 	vim.api.nvim_create_autocmd("BufEnter", { buffer = buf, callback = ui.hide_cursor })
 	vim.api.nvim_create_autocmd("BufLeave", { buffer = buf, callback = ui.show_cursor })
 	vim.api.nvim_create_autocmd("BufWipeout", { buffer = buf, callback = ui.show_cursor })
+end
+
+-- Ask for one line of text in the yard's style (instead of vim.ui.input at the
+-- bottom of the screen). opts.title, opts.default. callback(text), or
+-- callback(nil) when cancelled.
+function M.input(opts, callback)
+	ui.set_highlights()
+	local from = vim.api.nvim_get_current_win()
+	local default = opts.default or ""
+	local width = math.min(math.max(44, vim.fn.strdisplaywidth(default) + 10), math.floor(vim.o.columns * 0.7))
+
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "switchyard"
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { default })
+	local row, col = place(from, width, 3) -- title, the line, hints
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = 3,
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded",
+		zindex = 100,
+	})
+	ui.title(win, { { " switchyard ", "SwitchyardHeading" }, { "· " .. opts.title, "SwitchyardDim" } })
+	ui.hints(buf, " ⏎ confirm  esc cancel")
+
+	local done = false
+	local function finish(value)
+		if done then
+			return
+		end
+		done = true
+		vim.cmd.stopinsert()
+		if vim.api.nvim_win_is_valid(win) then
+			vim.api.nvim_win_close(win, true)
+		end
+		if vim.api.nvim_win_is_valid(from) then
+			vim.api.nvim_set_current_win(from)
+		end
+		vim.schedule(function()
+			callback(value)
+		end)
+	end
+	local function confirm()
+		finish(vim.trim(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or ""))
+	end
+	local function map(modes, key, fn)
+		vim.keymap.set(modes, key, fn, { buffer = buf, nowait = true, silent = true })
+	end
+	map({ "i", "n" }, "<CR>", confirm)
+	map("i", "<Esc>", function()
+		finish(nil)
+	end)
+	map("n", "<Esc>", function()
+		finish(nil)
+	end)
+	map("n", "q", function()
+		finish(nil)
+	end)
+	-- Clicking elsewhere cancels
+	vim.api.nvim_create_autocmd("WinLeave", {
+		buffer = buf,
+		once = true,
+		callback = function()
+			finish(nil)
+		end,
+	})
+	vim.cmd("startinsert!")
 end
 
 return M

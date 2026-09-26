@@ -317,7 +317,7 @@ local function dispatch()
 	end
 	local cwd = vim.fn.getcwd()
 	M.close()
-	vim.ui.input({ prompt = "Branch for the task: ", default = M.slug(text) }, function(branch)
+	require("switchyard.menu").input({ title = "dispatch: branch for the task", default = M.slug(text) }, function(branch)
 		if not branch or branch == "" then
 			return M.open() -- back to the draft
 		end

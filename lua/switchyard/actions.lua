@@ -39,7 +39,7 @@ end
 -- Ask for a branch name and create a worktree for it (the editor stays put).
 -- on_done(path, branch)
 function M.create_worktree(cwd, on_done)
-	vim.ui.input({ prompt = "New branch: " }, function(branch)
+	require("switchyard.menu").input({ title = "new worktree: branch name" }, function(branch)
 		if not branch or branch == "" then
 			return
 		end

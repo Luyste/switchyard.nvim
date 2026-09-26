@@ -101,6 +101,10 @@ anything, then **inspect the actual code**: some items below are marked
   draws them over the border line). Title = the float's winbar
   (`ui.title(win, chunks)`), hints = a virtual line below the last line
   (`ui.hints(buf, text)`); both add a line to the window's height.
+- **Questions in switchyard's own style:** choices via `menu.open`, text via
+  `menu.input` (a small float below the yard when opened from it; ⏎ confirm,
+  Esc cancels, clicking elsewhere cancels). Never `vim.ui.select` /
+  `vim.ui.input` (those end up at the bottom of the screen).
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.

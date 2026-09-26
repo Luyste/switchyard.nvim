@@ -678,7 +678,7 @@ local actions = {
 				if not old then
 					return warn(agent_name(s) .. " isn't running in tmux")
 				end
-				vim.ui.input({ prompt = "Rename to: ", default = old }, function(new)
+				require("switchyard.menu").input({ title = "rename " .. old, default = old }, function(new)
 					if not new or new == "" or new == old then
 						return
 					end
