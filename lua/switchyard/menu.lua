@@ -34,6 +34,7 @@ function M.open(opts)
 
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "switchyard"
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.bo[buf].modifiable = false
 	for i, line_marks in ipairs(marks) do

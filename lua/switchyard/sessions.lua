@@ -7,6 +7,12 @@ local link = nil
 -- where it moved to while we couldn't follow yet (unsaved changes)
 local seen_cwd, follow_to = nil, nil
 
+-- A one-time hold: arriving in this folder keeps the current link (peek)
+local hold = nil
+
+-- When each agent was last shown in the viewer: pid -> counter (higher = later)
+local viewed, view_count = {}, 0
+
 -- tmux session names by process ID: a name, false (not in tmux), or nil (not looked up yet)
 local tmux_names = {}
 
@@ -78,6 +84,7 @@ end
 
 -- Link to `session` (or unlink with nil). `quiet` skips the message.
 function M.link(session, quiet)
+	local changed = (link and link.pid) ~= (session and session.pid)
 	link = session
 	seen_cwd, follow_to = session and session.cwd, nil
 	if session then
@@ -85,6 +92,9 @@ function M.link(session, quiet)
 	end
 
 	vim.cmd("redrawstatus")
+	if changed then
+		vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardLinkChanged" })
+	end
 	if not quiet then
 		vim.cmd("redraw")
 		vim.notify(session and ("switchyard: linked to " .. M.describe(session)) or "switchyard: unlinked")
@@ -164,16 +174,48 @@ local function ask_about_link(current)
 	end)
 end
 
+-- The viewer showed this agent (it wins when a worktree has several agents)
+function M.viewed(pid)
+	view_count = view_count + 1
+	viewed[pid] = view_count
+end
+
+-- Of several agents in one worktree: the one last shown in the viewer, else
+-- the most recently started
+local function preferred(list)
+	table.sort(list, function(a, b)
+		local va, vb = viewed[a.pid] or 0, viewed[b.pid] or 0
+		if va ~= vb then
+			return va > vb
+		end
+		return (a.started or "") > (b.started or "") -- ISO timestamps sort as text
+	end)
+	return list[1]
+end
+
+-- Peek: the next arrival in `dir` keeps the current link, whatever is there.
+-- nil clears it. Any other arrival discards it.
+function M.keep_link_for(dir)
+	hold = dir and vim.fn.fnamemodify(dir, ":p"):gsub("/$", "") or nil
+end
+
 local function on_arrival()
 	local cwd = vim.fn.getcwd()
+	local held = hold
+	hold = nil
+	if held == cwd then
+		return
+	end
 	local here = M.in_folder(cwd)
 	local current = M.linked()
 
-	if #here == 1 then
-		if not current or current.pid ~= here[1].pid then
-			M.link(here[1], true)
+	if #here > 0 then
+		-- Already linked to one of them: keep it. Otherwise the link moves along.
+		local linked_here = current and current.cwd == cwd
+		if not linked_here then
+			M.link(preferred(here), true)
 		end
-	elseif #here == 0 and current and current.cwd ~= cwd then
+	elseif current and current.cwd ~= cwd then
 		local mode = require("switchyard.config").options.empty_worktree
 		if mode == "ask" then
 			ask_about_link(current)
@@ -181,7 +223,7 @@ local function on_arrival()
 			M.link(nil, true)
 		end
 		-- "keep": nothing to do, the statusline shows where the linked agent is
-	end -- Several agents here: keep the current link
+	end
 end
 
 ---------------------------------------------------------------------------

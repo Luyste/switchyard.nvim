@@ -17,6 +17,7 @@ M.defaults = {
 		},
 		yard = {
 			activate = "<CR>",
+			peek = "<S-CR>",
 			toggle = "o",
 			filter = "i",
 			close = "q",

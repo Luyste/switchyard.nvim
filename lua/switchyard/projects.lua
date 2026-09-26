@@ -20,19 +20,24 @@ function M.switch(dir)
 		return true
 	end
 
+	-- redraw first: a pending screen update (the yard closing) would wipe the message
 	if vim.fn.isdirectory(dir) == 0 then
+		vim.cmd("redraw")
 		vim.notify("switchyard: folder doesn't exist: " .. dir, vim.log.levels.ERROR)
 		return false
 	end
 
 	local unsaved = unsaved_buffers()
 	if #unsaved > 0 then
+		vim.cmd("redraw")
 		vim.notify(
 			("switchyard: unsaved changes in %s. Save first."):format(vim.fn.bufname(unsaved[1])),
 			vim.log.levels.WARN
 		)
 		return false
 	end
+
+	local viewer_open = require("switchyard.view").is_open()
 
 	-- Back to a single window with an empty buffer. A fresh window, because the
 	-- current one may be a file tree, a terminal or a float: `only` + `enew`
@@ -62,6 +67,14 @@ function M.switch(dir)
 		pattern = "SwitchyardSwitched",
 		data = { from = from, to = dir },
 	})
+
+	-- `only` closed the viewer: bring it back once the arrival rules have run
+	-- (they're scheduled from DirChanged, so this runs after them)
+	if viewer_open then
+		vim.schedule(function()
+			require("switchyard.view").sync(true)
+		end)
+	end
 	return true
 end
 

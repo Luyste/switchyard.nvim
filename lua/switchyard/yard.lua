@@ -226,6 +226,7 @@ local function render_detail()
 		line({})
 		actions({
 			{ k.activate, "switch editor here" },
+			{ "⇧⏎", "switch, keep agent" },
 			{ k.toggle, "expand / collapse agents" },
 			{ k.new_agent, "new agent here" },
 			{ k.continue_agent, "continue last session here" },
@@ -249,6 +250,7 @@ local function render_detail()
 		line({})
 		actions({
 			{ k.activate, "link editor to this agent" },
+			{ "⇧⏎", "go to its worktree, keep agent" },
 			{ k.view, "view in split" },
 			{ k.external, "open in external terminal" },
 			{ k.send, "send a prompt" },
@@ -282,12 +284,12 @@ local function footer()
 	if state.mode == "normal" then
 		return {
 			{
-				(" j/k move  %s expand  %s switch  %s filter  %s close "):format(k.toggle, "⏎", k.filter, k.close),
+				(" j/k move  %s expand  ⏎ switch  ⇧⏎ keep agent  %s filter  %s close "):format(k.toggle, k.filter, k.close),
 				"SwitchyardDim",
 			},
 		}
 	end
-	return { { " ⏎ switch  ^N/^P move  ⇥ expand  esc manage ", "SwitchyardDim" } }
+	return { { " ⏎ switch  ⇧⏎ keep agent  ^N/^P move  ⇥ expand  esc manage ", "SwitchyardDim" } }
 end
 
 local function layout()
@@ -454,6 +456,26 @@ local function activate()
 	end
 end
 
+-- Peek: go to the row's worktree but keep the current link
+local function peek()
+	local row = selected_row()
+	if not row then
+		return
+	end
+	local path = row.worktree.path -- an agent row: its worktree
+	M.close()
+	if path == vim.fn.getcwd() then
+		return
+	end
+	vim.schedule(function()
+		local sessions = require("switchyard.sessions")
+		sessions.keep_link_for(path)
+		if not require("switchyard.projects").switch(path) then
+			sessions.keep_link_for(nil) -- blocked (unsaved changes): no arrival follows
+		end
+	end)
+end
+
 ---------------------------------------------------------------------------
 -- Modes
 ---------------------------------------------------------------------------
@@ -521,6 +543,7 @@ local function set_keymaps()
 		move(-1)
 	end)
 	map(input, "i", "<CR>", activate)
+	map(input, "i", k.peek, peek)
 	map(input, "i", "<Tab>", toggle)
 	map(input, { "i", "n" }, "<Esc>", enter_normal)
 	map(input, "i", "<C-c>", M.close)
@@ -534,6 +557,7 @@ local function set_keymaps()
 		move(-1)
 	end)
 	map(list, "n", k.activate, activate)
+	map(list, "n", k.peek, peek)
 	map(list, "n", k.toggle, toggle)
 	map(list, "n", "<Tab>", toggle)
 	map(list, "n", k.filter, enter_filter)
@@ -616,9 +640,9 @@ function M.open()
 	for _, name in ipairs({ "input", "list", "detail" }) do
 		local buf = vim.api.nvim_create_buf(false, true)
 		vim.bo[buf].bufhidden = "hide"
+		vim.bo[buf].filetype = "switchyard" -- lets statuslines recognise the yard
 		state.bufs[name] = buf
 	end
-	vim.bo[state.bufs.list].filetype = "switchyard"
 
 	local base =
 		{ relative = "editor", row = 1, col = 1, width = 40, height = 1, style = "minimal", border = "rounded" }

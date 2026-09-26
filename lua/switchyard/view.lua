@@ -1,6 +1,6 @@
 local M = {}
 
--- list: the agents the viewer can show here, as { pid, name } (for the statusline tabs)
+-- list: the agents the viewer can show here, as { pid, name } (for the winbar tabs)
 local viewer = { buf = nil, win = nil, name = nil, list = {} }
 
 local function valid_win(win)
@@ -30,13 +30,14 @@ end
 
 -- One agent tab: the visible one highlighted, ● before the linked one
 local function tab(name, visible, linked)
-	local label = (linked and "● " or "") .. name:gsub("%%", "%%%%") -- % is special in a statusline
+	local label = (linked and "● " or "") .. name:gsub("%%", "%%%%") -- % is special in a winbar
 	return (visible and "%#SwitchyardSelection#" or "%#SwitchyardDim#") .. " " .. label .. " %*"
 end
 
--- The viewer's own statusline: mode, agent tabs, hint. Runs on every redraw,
+-- The viewer's winbar (a bar on top of the window; unlike a local statusline it
+-- also works with a global statusline): mode, agent tabs, hint. Runs on every redraw,
 -- so it only reads cached values (viewer.list, linked_pid), never files.
-function M.statusline()
+function M.winbar()
 	local focused = vim.api.nvim_get_current_win() == viewer.win
 	local terminal = focused and vim.api.nvim_get_mode().mode == "t"
 	local badge = terminal and "%#SwitchyardFilterBadge# TERMINAL %*" or "%#SwitchyardNormalBadge# NORMAL %*"
@@ -99,7 +100,7 @@ local function attach(name)
 			vim.cmd.startinsert()
 		end,
 	})
-	-- Switching terminal/normal mode doesn't redraw the statusline by itself
+	-- Switching terminal/normal mode doesn't redraw the winbar by itself
 	vim.api.nvim_create_autocmd({ "TermEnter", "TermLeave" }, {
 		buffer = buf,
 		callback = function()
@@ -131,18 +132,30 @@ local function attach(name)
 	end
 end
 
--- Show tmux session `name` in the viewer split
-local function show_name(name)
+function M.is_open()
+	return valid_win(viewer.win)
+end
+
+-- Show `agent` ({ name, pid }) in the viewer split. focus = false: keep the
+-- cursor where it is (for updates the user didn't ask for).
+local function show_name(agent, focus)
+	local from = vim.api.nvim_get_current_win()
 	open_window()
-	if viewer.name == name and valid_buf(viewer.buf) then
+	if viewer.name == agent.name and valid_buf(viewer.buf) then
 		vim.api.nvim_win_set_buf(viewer.win, viewer.buf)
 	else
-		attach(name)
+		attach(agent.name)
 	end
-	-- A local statusline only sticks to the buffer it was set with, so set it
-	-- after the buffer is in place. %! re-evaluates it on every redraw.
-	vim.wo[viewer.win].statusline = "%!v:lua.require'switchyard.view'.statusline()"
-	vim.cmd.startinsert()
+	require("switchyard.sessions").viewed(agent.pid)
+	-- Window-local options set here only stick to the buffer in the window at that
+	-- moment, so set them after the buffer is in place. %! re-evaluates on every redraw.
+	vim.wo[viewer.win].winbar = "%!v:lua.require'switchyard.view'.winbar()"
+	vim.wo[viewer.win].winhighlight = "WinBar:StatusLine,WinBarNC:StatusLineNC"
+	if focus == false then
+		vim.api.nvim_set_current_win(from)
+	else
+		vim.cmd.startinsert()
+	end
 end
 
 -- The agents the viewer can show here: the linked one first, then the others
@@ -180,13 +193,46 @@ local function refresh()
 	end
 end
 
+-- Show the linked agent, if it runs in tmux, without taking focus. Only while
+-- the viewer is open, or with `reopen` (a worktree switch closed the viewer).
+function M.sync(reopen)
+	if not reopen and not valid_win(viewer.win) then
+		return
+	end
+	viewable(function(list, linked)
+		local target
+		if list[1] and linked and list[1].pid == linked.pid then
+			target = list[1]
+		elseif reopen and list[1] then
+			-- The linked agent isn't viewable: the one shown before, if still here
+			target = list[1]
+			for _, agent in ipairs(list) do
+				if agent.name == viewer.name then
+					target = agent
+				end
+			end
+		end
+		if target and (target.name ~= viewer.name or not valid_win(viewer.win)) then
+			show_name(target, false)
+		else
+			vim.cmd.redrawstatus()
+		end
+	end)
+end
+
 vim.api.nvim_create_autocmd("User", { pattern = "SwitchyardSessionsChanged", callback = refresh })
+vim.api.nvim_create_autocmd("User", {
+	pattern = "SwitchyardLinkChanged",
+	callback = function()
+		M.sync(false)
+	end,
+})
 vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refresh })
 
 -- Show `session` in the viewer split
 function M.show(session)
 	with_tmux_name(session, function(name)
-		show_name(name)
+		show_name({ name = name, pid = session.pid })
 		refresh()
 	end)
 end
@@ -217,7 +263,7 @@ function M.cycle(delta)
 		else
 			i = (current - 1 + delta) % #list + 1 -- Lua's % is never negative: wraps both ways
 		end
-		show_name(list[i].name)
+		show_name(list[i])
 		vim.cmd.redrawstatus()
 	end)
 end
@@ -238,7 +284,7 @@ function M.toggle()
 			vim.notify("switchyard: the linked agent isn't in tmux, showing another one here")
 		end
 		if linked_shown or #list == 1 then
-			return show_name(list[1].name)
+			return show_name(list[1])
 		end
 
 		require("switchyard.menu").open({
@@ -247,7 +293,7 @@ function M.toggle()
 				return {
 					label = agent.name,
 					action = function()
-						show_name(agent.name)
+						show_name(agent)
 					end,
 				}
 			end, list),
