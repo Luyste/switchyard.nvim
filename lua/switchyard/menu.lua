@@ -30,6 +30,10 @@ end
 function M.open(opts)
 	ui.set_highlights()
 	local from = vim.api.nvim_get_current_win() -- focus goes back here
+	-- Opened while typing (the prompt builder): the menu works in normal mode,
+	-- else Ctrl-N/Ctrl-P are insert-mode completion (E21 on a read-only buffer)
+	local was_typing = vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
+	vim.cmd.stopinsert()
 	local items = opts.items
 
 	local label_width = 0
@@ -92,6 +96,9 @@ function M.open(opts)
 		end
 		if vim.api.nvim_win_is_valid(from) then
 			vim.api.nvim_set_current_win(from)
+			if was_typing then
+				vim.cmd("startinsert!") -- typing on where you were
+			end
 		end
 	end
 	local function choose(index)

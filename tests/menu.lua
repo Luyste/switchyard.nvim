@@ -31,3 +31,4 @@ assert(answer == nil, "cancelled")
 assert(#vim.api.nvim_list_wins() == 1, "closed")
 
 print("menu: ok")
+
