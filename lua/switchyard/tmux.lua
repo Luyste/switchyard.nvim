@@ -64,6 +64,20 @@ function M.new(name, cwd, cmd, callback)
 	end)
 end
 
+-- Paste `text` into the session's active pane as if it were typed (bracketed
+-- paste, so newlines don't submit; no Enter at the end): callback(ok, error)
+function M.paste(name, text, callback)
+	util.run({ "tmux", "load-buffer", "-b", "switchyard", "-" }, { stdin = text }, function(ok, _, stderr)
+		if not ok then
+			return callback(false, vim.trim(stderr))
+		end
+		-- "=name:" = the current window of exactly this session
+		tmux({ "paste-buffer", "-p", "-d", "-b", "switchyard", "-t", target(name) .. ":" }, function(pasted, _, err)
+			callback(pasted, not pasted and vim.trim(err) or nil)
+		end)
+	end)
+end
+
 -- Rename a session: callback(ok, error_message)
 function M.rename(name, new_name, callback)
 	tmux({ "rename-session", "-t", target(name), new_name }, function(ok, _, stderr)

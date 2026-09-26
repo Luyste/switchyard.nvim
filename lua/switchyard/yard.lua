@@ -661,6 +661,14 @@ local actions = {
 			end,
 		},
 		{
+			key = "send",
+			label = "write a prompt for it",
+			run = function(row)
+				M.close()
+				require("switchyard.prompt").open_for(row.session)
+			end,
+		},
+		{
 			key = "rename",
 			label = "rename its tmux session",
 			run = function(row)

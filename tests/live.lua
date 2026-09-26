@@ -106,3 +106,12 @@ live.follow_edits(false)
 assert(not live.following_edits(), "stopped")
 
 print("follow: ok")
+
+-- Switching worktree while following: the watcher moves along (no error)
+local other = vim.fn.resolve(vim.fn.tempname())
+vim.fn.mkdir(other, "p")
+live.follow_edits(true)
+vim.cmd.cd(other)
+assert(live.following_edits(), "still following after a switch")
+live.follow_edits(false)
+print("follow switch: ok")

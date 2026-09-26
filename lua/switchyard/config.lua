@@ -39,6 +39,7 @@ M.defaults = {
 			view = "v", -- in the split
 			external = "g", -- in an external terminal
 			rename = "r", -- its tmux session
+			send = "s", -- the prompt builder aimed at this agent
 		},
 	},
 }

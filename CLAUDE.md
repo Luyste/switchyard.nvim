@@ -323,7 +323,14 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    `From <path>:<a>-<b>:` + fenced code (+ `- SEVERITY: message`), paths
    relative to the target's folder when inside it, else absolute). DRAFT n in
    the statusline. The builder stays open when a switchyard menu takes focus.
-   Order from here: (3) targets + `s` + hand-over, (4) dispatch
+   Part 3 done: Ctrl-T = menu of this repo's agents, the prompt goes there
+   (link unchanged; back to the linked agent after sending); yard `s` =
+   `prompt.open_for(session)`; title `→ name (linked) (in <wt>)`, target looked
+   up on open/choose only (not per keystroke); Ctrl-O hand-over =
+   `tmux.paste` (load-buffer from stdin + paste-buffer -p, no Enter) into the
+   agent's input, then the viewer shows it. Cross-worktree paths are absolute
+   (no "(worktree <branch>)" suffix yet).
+   Order from here: (4) dispatch
    as the "new worktree" target (`N`, `dispatch()`). Original design notes:
    (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
@@ -397,6 +404,12 @@ it). Worktree rows may still show the diff size vs the default branch later
 - `:only` also closes the viewer: whoever switches must bring it back.
 - The last window can't be hidden or closed (E444): `view.hide()` swaps in an
   empty buffer when the viewer is the only window left.
+- A `local function f` is only visible BELOW its definition; above it, `f`
+  silently means the global `f` (nil) and fails only when that code runs
+  (hit twice: live.setup, prompt's add_file). Put setup() last, or declare
+  `local f` early. Check for accidental globals before committing:
+  `for f in lua/switchyard/*.lua lua/switchyard/adapters/*.lua; do luajit -bl "$f" | grep -oE 'GGET.*"[a-z_]+"' ; done`
+  (only vim, require, package and Lua builtins may show up).
 - `ipairs({ a, b })` stops at the first nil: iterate optional values with
   `pairs` over named keys (the yard's close left its window open this way).
 - `follow()` must react to a _move_ of the linked agent (compare with the cached

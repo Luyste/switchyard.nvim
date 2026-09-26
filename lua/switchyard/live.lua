@@ -87,47 +87,6 @@ local function unwatch(buf)
 	end
 end
 
-function M.setup()
-	local group = vim.api.nvim_create_augroup("switchyard_live", { clear = true })
-	-- BufWritePost: a new file only exists (and can be watched) once saved
-	vim.api.nvim_create_autocmd({ "BufReadPost", "BufNewFile", "BufWritePost" }, {
-		group = group,
-		callback = function(args)
-			watch(args.buf)
-		end,
-	})
-	vim.api.nvim_create_autocmd("BufUnload", {
-		group = group,
-		callback = function(args)
-			unwatch(args.buf)
-		end,
-	})
-	-- Following edits moves along with the editor
-	vim.api.nvim_create_autocmd("DirChanged", {
-		group = group,
-		pattern = "global",
-		callback = function()
-			if follow.handle then
-				stop_following()
-				start_following(vim.fn.getcwd())
-			end
-		end,
-	})
-	-- Renamed (:saveas, :file): watch the new folder instead
-	vim.api.nvim_create_autocmd("BufFilePost", {
-		group = group,
-		callback = function(args)
-			unwatch(args.buf)
-			watch(args.buf)
-		end,
-	})
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(buf) then
-			watch(buf)
-		end
-	end
-end
-
 ---------------------------------------------------------------------------
 -- Follow edits: show the file the agent just changed in the editor window
 ---------------------------------------------------------------------------
@@ -302,6 +261,49 @@ M.follow_supported = supported
 -- How many folders are being watched (for tests)
 function M.watched_count()
 	return vim.tbl_count(folders)
+end
+
+-- Last in the file: it uses the local functions above (a local is only
+-- visible below the line that defines it)
+function M.setup()
+	local group = vim.api.nvim_create_augroup("switchyard_live", { clear = true })
+	-- BufWritePost: a new file only exists (and can be watched) once saved
+	vim.api.nvim_create_autocmd({ "BufReadPost", "BufNewFile", "BufWritePost" }, {
+		group = group,
+		callback = function(args)
+			watch(args.buf)
+		end,
+	})
+	vim.api.nvim_create_autocmd("BufUnload", {
+		group = group,
+		callback = function(args)
+			unwatch(args.buf)
+		end,
+	})
+	-- Following edits moves along with the editor
+	vim.api.nvim_create_autocmd("DirChanged", {
+		group = group,
+		pattern = "global",
+		callback = function()
+			if follow.handle then
+				stop_following()
+				start_following(vim.fn.getcwd())
+			end
+		end,
+	})
+	-- Renamed (:saveas, :file): watch the new folder instead
+	vim.api.nvim_create_autocmd("BufFilePost", {
+		group = group,
+		callback = function(args)
+			unwatch(args.buf)
+			watch(args.buf)
+		end,
+	})
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) then
+			watch(buf)
+		end
+	end
 end
 
 return M

@@ -18,6 +18,8 @@ local state = {
 	-- or a whole file: { path, whole = true, source_buf }
 	contexts = {},
 	origin_buf = nil, -- the buffer the builder was opened from (Ctrl-F adds it)
+	target = nil, -- a chosen agent for this prompt (Ctrl-T, the yard's `s`); nil = the linked one
+	shown = nil, -- the target as the title shows it (looked up on open/choose, not per keystroke)
 }
 
 local layout -- defined below; declared here so the context functions can call it
@@ -46,17 +48,35 @@ local function draft_text()
 end
 
 -- Where prompts go: the linked agent
+-- Where this prompt goes: the chosen agent while it runs, else the linked one
 local function target()
+	local chosen = state.target
+	if chosen then
+		for _, s in ipairs(chosen.adapter.sessions()) do
+			if s.pid == chosen.pid then
+				return s
+			end
+		end
+		state.target = nil -- it ended
+	end
 	return require("switchyard.sessions").linked()
 end
 
+local function name_of(s)
+	return require("switchyard.sessions").tmux_name(s) or s.adapter.name
+end
+
 local function title()
-	local sessions = require("switchyard.sessions")
-	local s = target()
+	local s = state.shown
 	if not s then
-		return { { " → no linked agent (link one in the yard) ", "SwitchyardDanger" } }
+		return { { " → no linked agent (link one in the yard, or ^T) ", "SwitchyardDanger" } }
 	end
-	local parts = { { " → ", "SwitchyardDim" }, { (sessions.tmux_name(s) or s.adapter.name) .. " ", "SwitchyardLinked" } }
+	local linked = s.pid == require("switchyard.sessions").linked_pid()
+	local parts = {
+		{ " → ", "SwitchyardDim" },
+		{ name_of(s) .. " ", linked and "SwitchyardLinked" or "SwitchyardAgent" },
+		{ linked and "(linked) " or "", "SwitchyardDim" },
+	}
 	if s.cwd ~= vim.fn.getcwd() then
 		table.insert(parts, { "(in " .. vim.fn.fnamemodify(s.cwd, ":t") .. ") ", "SwitchyardDim" })
 	end
@@ -80,10 +100,10 @@ end
 -- One header line: `file.go:12-14 (3 lines)` / `file.go:40 + 2 diagnostics`
 local function describe(c)
 	if c.whole then
-		return path_for(c.path, target()) .. " (whole file)"
+		return path_for(c.path, state.shown) .. " (whole file)"
 	end
 	local range = c.first == c.last and tostring(c.first) or (c.first .. "-" .. c.last)
-	local name = path_for(c.path, target())
+	local name = path_for(c.path, state.shown)
 	local extra = #c.diagnostics > 0 and (" + " .. #c.diagnostics .. " diagnostic" .. (#c.diagnostics > 1 and "s" or ""))
 		or (" (" .. (c.last - c.first + 1) .. " lines)")
 	return name .. ":" .. range .. extra
@@ -220,7 +240,7 @@ layout = function()
 	else
 		ui.title(state.win, title())
 	end
-	ui.hints(state.buf, " ⏎ send  ⇧⏎ new line  ^F add file  ^D remove context  q close")
+	ui.hints(state.buf, " ⏎ send  ⇧⏎ new line  ^O hand over  ^T target  ^F file  ^D remove")
 
 	if not has_header then
 		if valid_win(state.header) then
@@ -286,12 +306,13 @@ function M.send()
 	if not s then
 		return vim.notify("switchyard: no linked agent. Link one in the yard first.", vim.log.levels.WARN)
 	end
-	local name = require("switchyard.sessions").tmux_name(s) or s.adapter.name
+	local name = name_of(s)
 	s.adapter.send(s, message(s), function(ok, err)
 		if not ok then
 			return vim.notify("switchyard: couldn't send to " .. name .. ": " .. tostring(err), vim.log.levels.ERROR)
 		end
 		clear()
+		state.target = nil -- the next prompt goes to the linked agent again
 		M.close()
 		vim.cmd("redraw")
 		vim.notify("switchyard: sent to " .. name)
@@ -321,6 +342,69 @@ local function remove_context()
 	})
 end
 
+-- Ctrl-T: send this prompt to another agent of this repo (the link stays)
+local function choose_target()
+	local sessions = require("switchyard.sessions")
+	require("switchyard.worktrunk").list(vim.fn.getcwd(), function(worktrees)
+		local branch_of = {}
+		for _, wt in ipairs(worktrees or {}) do
+			branch_of[wt.path] = wt.branch
+		end
+		local agents = vim.tbl_filter(function(s)
+			return branch_of[s.cwd] ~= nil
+		end, sessions.all())
+		if #agents == 0 then
+			return vim.notify("switchyard: no agents in this repo", vim.log.levels.WARN)
+		end
+		require("switchyard.menu").open({
+			title = "send this prompt to",
+			items = vim.tbl_map(function(s)
+				return {
+					label = name_of(s) .. " · " .. branch_of[s.cwd],
+					key = s.pid == sessions.linked_pid() and "linked" or nil,
+					action = function()
+						state.target = s
+						state.shown = s
+						layout()
+					end,
+				}
+			end, agents),
+		})
+	end)
+end
+
+-- Ctrl-O: hand the prompt over: paste it into the agent's own input (in tmux),
+-- without sending, and show the agent so you can finish it there
+local function hand_over()
+	local s = target()
+	if draft_text() == "" and #state.contexts == 0 then
+		return
+	end
+	if not s then
+		return vim.notify("switchyard: no target agent", vim.log.levels.WARN)
+	end
+	local tmux = require("switchyard.tmux")
+	local function paste(name)
+		if not name then
+			return vim.notify("switchyard: " .. name_of(s) .. " isn't running in tmux", vim.log.levels.WARN)
+		end
+		tmux.paste(name, message(s), function(ok, err)
+			if not ok then
+				return vim.notify("switchyard: tmux: " .. tostring(err), vim.log.levels.ERROR)
+			end
+			clear()
+			state.target = nil
+			M.close()
+			require("switchyard.view").show(s)
+		end)
+	end
+	local known = require("switchyard.sessions").tmux_name(s)
+	if known then
+		return paste(known)
+	end
+	tmux.session_of_pid(s.pid, paste)
+end
+
 local function set_keymaps(buf)
 	local function map(modes, key, fn)
 		vim.keymap.set(modes, key, fn, { buffer = buf, nowait = true, silent = true })
@@ -334,6 +418,8 @@ local function set_keymaps(buf)
 	map("n", "q", M.close)
 	map({ "i", "n" }, "<C-d>", remove_context)
 	map({ "i", "n" }, "<C-f>", add_file)
+	map({ "i", "n" }, "<C-t>", choose_target)
+	map({ "i", "n" }, "<C-o>", hand_over)
 	map("n", "<C-x>", clear)
 end
 
@@ -343,6 +429,7 @@ function M.open()
 	if current ~= state.buf then
 		state.origin_buf = current
 	end
+	state.shown = target()
 	if valid_win(state.win) then
 		layout()
 		vim.api.nvim_set_current_win(state.win)
@@ -386,6 +473,12 @@ function M.open()
 	local last = vim.api.nvim_buf_line_count(buf)
 	vim.api.nvim_win_set_cursor(state.win, { last, #vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1] })
 	vim.cmd("startinsert!") -- typing on at the end of the draft
+end
+
+-- Open the builder aimed at `session` for this prompt (the link stays)
+function M.open_for(session)
+	state.target = session
+	M.open()
 end
 
 -- For statuslines: "DRAFT" (+ number of contexts) while a draft waits and the
