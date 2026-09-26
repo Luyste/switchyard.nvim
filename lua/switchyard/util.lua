@@ -2,7 +2,7 @@ local M = {}
 
 function M.run(cmd, opts, callback)
 	opts = opts or {}
-	local started, err = pcall(vim.system, cmd, { text = true, cwd = opts.cwd }, function(res)
+	local started, err = pcall(vim.system, cmd, { text = true, cwd = opts.cwd, stdin = opts.stdin }, function(res)
 		vim.schedule(function()
 			callback(res.code == 0, res.stdout or "", res.stderr or "")
 		end)

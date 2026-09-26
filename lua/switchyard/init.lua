@@ -20,6 +20,16 @@ function M.pick_agent()
 	require("switchyard.sessions").pick()
 end
 
+-- Show the file the agent just changed (on/off; nil toggles)
+function M.follow_edits(on)
+	require("switchyard.live").follow_edits(on)
+end
+
+-- For statuslines: is following edits on? Cheap, no I/O.
+function M.following_edits()
+	return package.loaded["switchyard.live"] ~= nil and require("switchyard.live").following_edits()
+end
+
 function M.link_here()
 	require("switchyard.sessions").link_here()
 end

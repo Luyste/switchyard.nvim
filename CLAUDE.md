@@ -154,13 +154,14 @@ lua/switchyard/
                              badge text color picked by WCAG contrast (Normal fg vs bg)
   menu.lua                   yard-style small menu (numbered items, key/danger, 1-9)
   live.lua                   live reload: one fs_event per folder of loaded file buffers
-                             (refcounted), debounced checktime, skips modified buffers
+                             (refcounted), debounced checktime, skips modified buffers;
+                             follow edits (recursive watcher, see Status)
   yard.lua                   the yard (part 1 done, see below); close() returns to
                              the window it was opened from
   view.lua                   the viewer (split + statusline with agent tabs, cycle,
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
-                             (live: live reload; arrival: arrival rules + peek)
+                             (live: live reload + follow edits; arrival: arrival rules + peek)
 ```
 
 ## Status
@@ -208,6 +209,14 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - **Live reload** (`live_reload = true`): open files follow the agent's edits,
   also while in terminal mode. Folder watchers (see live.lua) also catch
   rename-replace saves.
+- **Follow edits** (`follow_edits(on?)`, `following_edits()`, `:Switchyard
+  follow-edits`, mapped Cmd+Shift+F; FOLLOW badge in my statusline): recursive
+  fs_event on the worktree (macOS/Windows only), `.git/` dropped, 150 ms debounce,
+  one `git check-ignore --stdin`, latest file shown in the editor window without
+  focus; cursor on the first changed line via `vim.diff` against live reload's
+  snapshot / the loaded buffer / `git show :./path`. Never replaces a modified
+  buffer. Moves along on DirChanged. `link_here()` (Cmd+Shift+H) links an agent
+  here after a peek.
 - **Peek**: Shift+Enter in the yard (`keys.yard.peek`) switches but keeps the
   link: `sessions.keep_link_for(dir)` is a one-time hold that `on_arrival`
   consumes; cleared again when the switch is blocked.
@@ -227,25 +236,14 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 
 ### Next steps (in this order)
 
-1. **Follow edits** (toggle, off by default; public `follow_edits(bool?)`,
-   `following_edits()` (cached, for my statusline) and
-   `:Switchyard follow-edits`): watch the current worktree recursively
-   (`fs_event` with `recursive = true`, works on macOS; elsewhere not offered,
-   health check says so), drop `.git/` at once, filter the rest in batch with
-   `git check-ignore --stdin` after a debounce. When a file changes, open it in
-   the main editor window (not the viewer, not the tree) without entering it,
-   and put the cursor on the first line the agent changed: keep the buffer's
-   lines before the reload and compare with `vim.diff(..., { result_type =
-   "indices" })` (built in, no gitsigns dependency). Skip when the editor
-   window's buffer has unsaved changes.
-2. **launch.lua**: `start(adapter, cmd, label, cwd, callback)` — default cwd =
+1. **launch.lua**: `start(adapter, cmd, label, cwd, callback)` — default cwd =
    editor cwd; only link when cwd == getcwd, otherwise notify "started <name>";
    `new(adapter, cwd)`, `continue(adapter, cwd)`, `fork(source, cwd)`.
-3. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
+2. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
    via vim.ui.input, remove_worktree(cwd, wt, on_done) (refuse current/main,
    confirm), stop_agent(session, on_done) (tmux kill-session, confirm).
    Confirmations via menu.lua.
-4. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
+3. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
    part 1's layout):
    - ONE floating window, sized to content: width = longest row, clamped
      ~50..90 cols; height = number of rows, capped (~60% of lines). Centered.
@@ -271,7 +269,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
      SwitchyardSessionsChanged redraws. Remove: the filter/normal layouts, the
      detail window, the mode badge, expand/collapse.
    - Iterate on size in real use; aim for "as small as possible".
-5. **Yard part 2 — actions per view** (row under cursor is the subject;
+4. **Yard part 2 — actions per view** (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
    | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -295,7 +293,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    - With several adapters installed, ask which one (menu); with one, use it.
    - Later: agent state (working / waiting) from pi-worktrunk's `wt list`
      markers; lock marker for locked worktrees.
-6. **Dispatch** (after yard part 2; shares code with spin-off):
+5. **Dispatch** (after yard part 2; shares code with spin-off):
 
 - Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
   positional messages: `pi [options] [--] [@files...] [messages...]`),
@@ -314,7 +312,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   global key (I'll map Cmd+Shift+D in n + x mode).
 - Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
 
-7. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
+6. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
     the source) but with a persistent draft and multiple contexts:
 
@@ -343,12 +341,12 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Fork note (currently a separate first message from launch.fork) could move
   in front of the first real prompt.
 
-8. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
+7. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
    in the yard replaces the project picker) and the old keymaps. It calls
    fzf-lua directly, which breaks the dependency rule until then.
-9. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
+8. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.
-10. README, docs, fuzzy matching, polish.
+9. README, docs, fuzzy matching, polish.
 
 Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
 it). Worktree rows may still show the diff size vs the default branch later

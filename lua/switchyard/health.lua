@@ -30,6 +30,12 @@ function M.check()
 		end
 	end
 
+	if require("switchyard.live").follow_supported() then
+		vim.health.ok("follow edits: available")
+	else
+		vim.health.info("follow edits: not available (needs recursive folder watching: macOS or Windows)")
+	end
+
 	for _, dir in ipairs(opts.projects_dirs) do
 		if vim.fn.isdirectory(dir) == 1 then
 			vim.health.ok("projects dir: " .. dir)
