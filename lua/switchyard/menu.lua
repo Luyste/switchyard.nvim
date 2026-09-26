@@ -23,8 +23,42 @@ local function place(from, width, height)
 	return row, col
 end
 
+-- A switchyard float holding `lines`, placed for window `from`, with the title
+-- and key hints on lines of their own. Returns buf, win.
+local function float(from, width, lines, title, hints)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "switchyard"
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	local height = #lines + 2 -- + the title line and the hints line
+	local row, col = place(from, width, height)
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded",
+		zindex = 100, -- above the yard (50): same-level floats overlap badly in Neovide
+	})
+	ui.title(win, { { " switchyard ", "SwitchyardHeading" }, { "· " .. title, "SwitchyardDim" } })
+	ui.hints(buf, hints)
+	return buf, win
+end
+
+-- Close float `win` and go back to window `from`
+local function leave(win, from)
+	if vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_close(win, true)
+	end
+	if vim.api.nvim_win_is_valid(from) then
+		vim.api.nvim_set_current_win(from)
+	end
+end
+
 -- Show a menu in the yard's style.
--- opts.title: text in the border
+-- opts.title: the title line
 -- opts.items: list of { label, action, key? (shown on the right), danger? }
 -- opts.on_cancel: optional, called when closed without choosing
 function M.open(opts)
@@ -56,30 +90,13 @@ function M.open(opts)
 		}
 	end
 
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.bo[buf].bufhidden = "wipe"
-	vim.bo[buf].filetype = "switchyard"
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	local buf, win = float(from, width, lines, opts.title, " ⏎ choose  ^N/^P move  1-9 pick  esc cancel")
 	vim.bo[buf].modifiable = false
 	for i, line_marks in ipairs(marks) do
 		for _, m in pairs(line_marks) do
 			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, m[1], { end_col = m[2], hl_group = m[3] })
 		end
 	end
-
-	local row, col = place(from, width, #items + 2) -- + title and hints lines
-	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor",
-		width = width,
-		height = #items + 2, -- + the title line and the hints line
-		row = row,
-		col = col,
-		style = "minimal",
-		border = "rounded",
-		zindex = 100, -- above the yard (50): same-level floats overlap badly in Neovide
-	})
-	ui.title(win, { { " switchyard ", "SwitchyardHeading" }, { "· " .. opts.title, "SwitchyardDim" } })
-	ui.hints(buf, " ⏎ choose  ^N/^P move  1-9 pick  esc cancel")
 	vim.wo[win].cursorline = true
 	vim.wo[win].winhighlight = "CursorLine:SwitchyardSelection"
 	ui.hide_cursor()
@@ -91,14 +108,9 @@ function M.open(opts)
 		end
 		done = true
 		ui.show_cursor()
-		if vim.api.nvim_win_is_valid(win) then
-			vim.api.nvim_win_close(win, true)
-		end
-		if vim.api.nvim_win_is_valid(from) then
-			vim.api.nvim_set_current_win(from)
-			if was_typing then
-				vim.cmd("startinsert!") -- typing on where you were
-			end
+		leave(win, from)
+		if was_typing and vim.api.nvim_get_current_win() == from then
+			vim.cmd("startinsert!") -- typing on where you were
 		end
 	end
 	local function choose(index)
@@ -155,23 +167,7 @@ function M.input(opts, callback)
 	local default = opts.default or ""
 	local width = math.min(math.max(44, vim.fn.strdisplaywidth(default) + 10), math.floor(vim.o.columns * 0.7))
 
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.bo[buf].bufhidden = "wipe"
-	vim.bo[buf].filetype = "switchyard"
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { default })
-	local row, col = place(from, width, 3) -- title, the line, hints
-	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor",
-		width = width,
-		height = 3,
-		row = row,
-		col = col,
-		style = "minimal",
-		border = "rounded",
-		zindex = 100,
-	})
-	ui.title(win, { { " switchyard ", "SwitchyardHeading" }, { "· " .. opts.title, "SwitchyardDim" } })
-	ui.hints(buf, " ⏎ confirm  esc cancel")
+	local buf, win = float(from, width, { default }, opts.title, " ⏎ confirm  esc cancel")
 
 	local done = false
 	local function finish(value)
@@ -180,12 +176,7 @@ function M.input(opts, callback)
 		end
 		done = true
 		vim.cmd.stopinsert()
-		if vim.api.nvim_win_is_valid(win) then
-			vim.api.nvim_win_close(win, true)
-		end
-		if vim.api.nvim_win_is_valid(from) then
-			vim.api.nvim_set_current_win(from)
-		end
+		leave(win, from)
 		vim.schedule(function()
 			callback(value)
 		end)

@@ -10,24 +10,6 @@ local function valid_buf(buf)
 	return buf ~= nil and vim.api.nvim_buf_is_valid(buf)
 end
 
--- The tmux session `session` runs in: callback(name), or a warning if it isn't in tmux
-local function with_tmux_name(session, callback)
-	local sessions = require("switchyard.sessions")
-	local known = sessions.tmux_name(session)
-	if known then
-		return callback(known)
-	end
-	require("switchyard.tmux").session_of_pid(session.pid, function(name)
-		if not name then
-			return vim.notify(
-				"switchyard: " .. sessions.describe(session) .. " isn't running in tmux",
-				vim.log.levels.WARN
-			)
-		end
-		callback(name)
-	end)
-end
-
 -- One agent tab: the visible one highlighted, ● before the linked one
 local function tab(name, visible, linked)
 	local label = (linked and "● " or "") .. name:gsub("%%", "%%%%") -- % is special in a winbar
@@ -230,7 +212,7 @@ vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refre
 
 -- Show `session` in the viewer split
 function M.show(session)
-	with_tmux_name(session, function(name)
+	require("switchyard.sessions").with_tmux_name(session, function(name)
 		show_name({ name = name, pid = session.pid })
 		refresh()
 	end)
@@ -317,74 +299,44 @@ local function mac_app(name)
 	return is_mac and vim.fn.isdirectory("/Applications/" .. name .. ".app") == 1
 end
 
--- `open -na App.app --args ...` starts a new instance of a macOS app with arguments
-local function mac_open(app, args)
-	return vim.list_extend({ "open", "-na", app .. ".app", "--args" }, args)
-end
-
+-- Terminals that open a window running a command: their macOS app (started
+-- with `open -na App.app --args ...`) or program, and the arguments before the
+-- command. Terminal.app is scripted with osascript instead.
 local terminals = {
-	ghostty = {
-		available = function()
-			return mac_app("Ghostty") or vim.fn.executable("ghostty") == 1
-		end,
-		command = function(cmd)
-			if mac_app("Ghostty") then
-				return mac_open("Ghostty", vim.list_extend({ "--quit-after-last-window-closed=true", "-e" }, cmd))
-			end
-			return vim.list_extend({ "ghostty", "-e" }, cmd)
-		end,
-	},
-	kitty = {
-		available = function()
-			return mac_app("kitty") or vim.fn.executable("kitty") == 1
-		end,
-		command = function(cmd)
-			if mac_app("kitty") then
-				return mac_open("kitty", cmd)
-			end
-			return vim.list_extend({ "kitty", "--detach" }, cmd)
-		end,
-	},
-	wezterm = {
-		available = function()
-			return mac_app("WezTerm") or vim.fn.executable("wezterm") == 1
-		end,
-		command = function(cmd)
-			if mac_app("WezTerm") then
-				return mac_open("WezTerm", vim.list_extend({ "start", "--" }, cmd))
-			end
-			return vim.list_extend({ "wezterm", "start", "--" }, cmd)
-		end,
-	},
-	alacritty = {
-		available = function()
-			return mac_app("Alacritty") or vim.fn.executable("alacritty") == 1
-		end,
-		command = function(cmd)
-			if mac_app("Alacritty") then
-				return mac_open("Alacritty", vim.list_extend({ "-e" }, cmd))
-			end
-			return vim.list_extend({ "alacritty", "-e" }, cmd)
-		end,
-	},
-	["terminal.app"] = {
-		available = function()
-			return is_mac
-		end,
-		command = function(cmd)
-			local line = table.concat(vim.tbl_map(vim.fn.shellescape, cmd), " ")
-			return {
-				"osascript",
-				"-e",
-				('tell application "Terminal" to do script %q'):format(line),
-				"-e",
-				'tell application "Terminal" to activate',
-			}
-		end,
-	},
+	ghostty = { app = "Ghostty", bin = "ghostty", app_args = { "--quit-after-last-window-closed=true", "-e" }, args = { "-e" } },
+	kitty = { app = "kitty", bin = "kitty", app_args = {}, args = { "--detach" } },
+	wezterm = { app = "WezTerm", bin = "wezterm", app_args = { "start", "--" }, args = { "start", "--" } },
+	alacritty = { app = "Alacritty", bin = "alacritty", app_args = { "-e" }, args = { "-e" } },
 }
 
 local auto_order = { "ghostty", "kitty", "wezterm", "alacritty", "terminal.app" }
+
+local function available(name)
+	if name == "terminal.app" then
+		return is_mac
+	end
+	local t = terminals[name]
+	return mac_app(t.app) or vim.fn.executable(t.bin) == 1
+end
+
+-- The command that opens terminal `name` running `cmd`
+local function command(name, cmd)
+	if name == "terminal.app" then
+		local line = table.concat(vim.tbl_map(vim.fn.shellescape, cmd), " ")
+		return {
+			"osascript",
+			"-e",
+			('tell application "Terminal" to do script %q'):format(line),
+			"-e",
+			'tell application "Terminal" to activate',
+		}
+	end
+	local t = terminals[name]
+	if mac_app(t.app) then
+		return vim.list_extend({ "open", "-na", t.app .. ".app", "--args", unpack(t.app_args) }, cmd)
+	end
+	return vim.list_extend({ t.bin, unpack(t.args) }, cmd)
+end
 
 -- The terminal to use: its name, or nil and an error message
 function M.terminal_name()
@@ -393,13 +345,13 @@ function M.terminal_name()
 		return "custom"
 	end
 	if choice ~= "auto" then
-		if terminals[choice] then
+		if terminals[choice] or choice == "terminal.app" then
 			return choice
 		end
 		return nil, "unknown terminal '" .. tostring(choice) .. "'"
 	end
 	for _, name in ipairs(auto_order) do
-		if terminals[name].available() then
+		if available(name) then
 			return name
 		end
 	end
@@ -416,12 +368,12 @@ local function terminal_command(cmd)
 	if not name then
 		return nil, err
 	end
-	return terminals[name].command(cmd)
+	return command(name, cmd)
 end
 
 -- Open `session` in a new external terminal window
 function M.external(session)
-	with_tmux_name(session, function(name)
+	require("switchyard.sessions").with_tmux_name(session, function(name)
 		local attach = { vim.fn.exepath("tmux"), "attach-session", "-t", "=" .. name }
 		local cmd, err = terminal_command(attach)
 		if not cmd then

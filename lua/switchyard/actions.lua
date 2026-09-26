@@ -56,27 +56,17 @@ function M.create_worktree(cwd, on_done)
 	end)
 end
 
--- End the tmux session `session` runs in (without asking). callback(ok)
+-- End the tmux session `session` runs in (without asking). callback(name)
+-- once it's gone.
 local function kill(session, callback)
-	local sessions = require("switchyard.sessions")
-	local tmux = require("switchyard.tmux")
-	local function stop(name)
-		if not name then
-			vim.notify("switchyard: " .. sessions.describe(session) .. " isn't running in tmux", vim.log.levels.WARN)
-			return callback(false)
-		end
-		tmux.kill(name, function(ok, err)
+	require("switchyard.sessions").with_tmux_name(session, function(name)
+		require("switchyard.tmux").kill(name, function(ok, err)
 			if not ok then
-				vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
+				return vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
 			end
-			callback(ok, name)
+			callback(name)
 		end)
-	end
-	local known = sessions.tmux_name(session)
-	if known then
-		return stop(known)
-	end
-	tmux.session_of_pid(session.pid, stop)
+	end)
 end
 
 -- Remove worktree `wt` after confirming. Never the current or the main one.
@@ -133,14 +123,12 @@ end
 -- Stop an agent after confirming, by ending its tmux session (so its shell
 -- goes too). Agents outside tmux aren't ours to kill.
 function M.stop_agent(session, on_done)
-	local name = require("switchyard.sessions").tmux_name(session) or session.adapter.name
+	local name = require("switchyard.sessions").name(session)
 	M.confirm("stop " .. name .. "?", "Stop " .. name, function()
-		kill(session, function(ok, killed)
-			if ok then
-				vim.notify("switchyard: stopped " .. killed)
-				if on_done then
-					on_done()
-				end
+		kill(session, function(killed)
+			vim.notify("switchyard: stopped " .. killed)
+			if on_done then
+				on_done()
 			end
 		end)
 	end)

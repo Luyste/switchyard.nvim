@@ -63,10 +63,6 @@ local function target()
 	return require("switchyard.sessions").linked()
 end
 
-local function name_of(s)
-	return require("switchyard.sessions").tmux_name(s) or s.adapter.name
-end
-
 local function title()
 	if state.dispatch then
 		return { { " → ", "SwitchyardDim" }, { "new worktree + agent ", "SwitchyardHeading" }, { "(dispatch) ", "SwitchyardDim" } }
@@ -78,7 +74,7 @@ local function title()
 	local linked = s.pid == require("switchyard.sessions").linked_pid()
 	local parts = {
 		{ " → ", "SwitchyardDim" },
-		{ name_of(s) .. " ", linked and "SwitchyardLinked" or "SwitchyardAgent" },
+		{ require("switchyard.sessions").name(s) .. " ", linked and "SwitchyardLinked" or "SwitchyardAgent" },
 		{ linked and "(linked) " or "", "SwitchyardDim" },
 	}
 	if s.cwd ~= vim.fn.getcwd() then
@@ -352,7 +348,7 @@ function M.send()
 	if not s then
 		return vim.notify("switchyard: no linked agent. Link one in the yard first.", vim.log.levels.WARN)
 	end
-	local name = name_of(s)
+	local name = require("switchyard.sessions").name(s)
 	s.adapter.send(s, message(s), function(ok, err)
 		if not ok then
 			return vim.notify("switchyard: couldn't send to " .. name .. ": " .. tostring(err), vim.log.levels.ERROR)
@@ -401,7 +397,7 @@ local function choose_target()
 		end, sessions.all())
 		local items = vim.tbl_map(function(s)
 			return {
-				label = name_of(s) .. " · " .. branch_of[s.cwd],
+				label = require("switchyard.sessions").name(s) .. " · " .. branch_of[s.cwd],
 				key = s.pid == sessions.linked_pid() and "linked" or nil,
 				action = function()
 					state.target, state.shown, state.dispatch = s, s, false
@@ -433,12 +429,8 @@ local function hand_over()
 	if not s then
 		return vim.notify("switchyard: no target agent", vim.log.levels.WARN)
 	end
-	local tmux = require("switchyard.tmux")
-	local function paste(name)
-		if not name then
-			return vim.notify("switchyard: " .. name_of(s) .. " isn't running in tmux", vim.log.levels.WARN)
-		end
-		tmux.paste(name, message(s), function(ok, err)
+	require("switchyard.sessions").with_tmux_name(s, function(name)
+		require("switchyard.tmux").paste(name, message(s), function(ok, err)
 			if not ok then
 				return vim.notify("switchyard: tmux: " .. tostring(err), vim.log.levels.ERROR)
 			end
@@ -447,12 +439,7 @@ local function hand_over()
 			M.close()
 			require("switchyard.view").show(s)
 		end)
-	end
-	local known = require("switchyard.sessions").tmux_name(s)
-	if known then
-		return paste(known)
-	end
-	tmux.session_of_pid(s.pid, paste)
+	end)
 end
 
 local function set_keymaps(buf)

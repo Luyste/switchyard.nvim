@@ -91,10 +91,6 @@ end
 -- Rows
 ---------------------------------------------------------------------------
 
-local function agent_name(session)
-	return sessions().tmux_name(session) or session.adapter.name
-end
-
 local function worktree_rows(all)
 	state.total = #(state.worktrees or {})
 	local rows = {}
@@ -105,7 +101,7 @@ local function worktree_rows(all)
 		local shown = state.filter == ""
 			or match(wt.branch)
 			or vim.iter(agents):any(function(s)
-				return match(agent_name(s)) ~= nil
+				return match(sessions().name(s)) ~= nil
 			end)
 		if shown then
 			table.insert(rows, { kind = "worktree", worktree = wt, agents = agents, key = wt.path, path = wt.path })
@@ -139,7 +135,7 @@ local function agent_rows(all)
 	local rows = {}
 	for _, s in ipairs(mine) do
 		local where = branch_of[s.cwd] or "removed worktree"
-		if state.filter == "" or match(agent_name(s)) or match(where) then
+		if state.filter == "" or match(sessions().name(s)) or match(where) then
 			table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
 		end
 	end
@@ -177,7 +173,7 @@ local function agent_line(i, row, linked)
 	local is_linked = s.pid == linked
 	number(b, i)
 	b.add("● ", is_linked and "SwitchyardLinked" or "SwitchyardAgent")
-	add_matched(b, agent_name(s), is_linked and "SwitchyardLinked" or nil)
+	add_matched(b, sessions().name(s), is_linked and "SwitchyardLinked" or nil)
 	return b, { row.where, "SwitchyardDim" }
 end
 
@@ -647,7 +643,7 @@ local actions = {
 			key = "fork",
 			label = "fork into another worktree…",
 			run = function(row)
-				with_worktree("fork " .. agent_name(row.session) .. " into", row.path, function(wt)
+				with_worktree("fork " .. sessions().name(row.session) .. " into", row.path, function(wt)
 					require("switchyard.launch").fork(row.session, wt.path)
 				end)
 			end,
@@ -676,7 +672,7 @@ local actions = {
 				local s = row.session
 				local old = sessions().tmux_name(s)
 				if not old then
-					return warn(agent_name(s) .. " isn't running in tmux")
+					return warn(sessions().name(s) .. " isn't running in tmux")
 				end
 				require("switchyard.menu").input({ title = "rename " .. old, default = old }, function(new)
 					if not new or new == "" or new == old then
@@ -748,7 +744,7 @@ local function open_menu(all_keys)
 			table.insert(items, { label = nav[2], key = key_label(nav[1]), action = nav[3] })
 		end
 	end
-	local subject = row and (row.kind == "worktree" and row.worktree.branch or agent_name(row.session)) or view
+	local subject = row and (row.kind == "worktree" and row.worktree.branch or sessions().name(row.session)) or view
 	require("switchyard.menu").open({ title = all_keys and (view .. " · keys") or subject, items = items })
 end
 

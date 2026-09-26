@@ -41,6 +41,27 @@ function M.tmux_name(session)
 	return tmux_names[session.pid] or nil
 end
 
+-- A session's name for people: its tmux session, else the agent's name
+function M.name(session)
+	return tmux_names[session.pid] or session.adapter.name
+end
+
+-- The tmux session `session` runs in: callback(name). Warns instead when it
+-- doesn't run in tmux.
+function M.with_tmux_name(session, callback)
+	local known = M.tmux_name(session)
+	if known then
+		return callback(known)
+	end
+	require("switchyard.tmux").session_of_pid(session.pid, function(name)
+		if not name then
+			return vim.notify("switchyard: " .. M.describe(session) .. " isn't running in tmux", vim.log.levels.WARN)
+		end
+		tmux_names[session.pid] = name
+		callback(name)
+	end)
+end
+
 local function adapters()
 	return require("switchyard.adapters").active()
 end
@@ -118,7 +139,7 @@ function M.status()
 	if not link then
 		return ""
 	end
-	local label = tmux_names[link.pid] or link.adapter.name
+	local label = M.name(link)
 	local where = link.cwd ~= vim.fn.getcwd() and (" (in " .. vim.fn.fnamemodify(link.cwd, ":t") .. ")") or ""
 	return label .. where
 end
