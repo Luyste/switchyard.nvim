@@ -20,6 +20,10 @@ function M.pick_agent()
 	require("switchyard.sessions").pick()
 end
 
+function M.link_here()
+	require("switchyard.sessions").link_here()
+end
+
 function M.status()
 	return require("switchyard.sessions").status()
 end

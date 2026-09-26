@@ -193,6 +193,16 @@ local function preferred(list)
 	return list[1]
 end
 
+-- After a peek: link to an agent in the editor's worktree after all, the way
+-- a normal switch would have (last viewed, else most recently started)
+function M.link_here()
+	local here = M.in_folder(vim.fn.getcwd())
+	if #here == 0 then
+		return vim.notify("switchyard: no agent in this worktree", vim.log.levels.WARN)
+	end
+	M.link(preferred(here))
+end
+
 -- Peek: the next arrival in `dir` keeps the current link, whatever is there.
 -- nil clears it. Any other arrival discards it.
 function M.keep_link_for(dir)

@@ -72,4 +72,13 @@ arrive(c)
 arrive(b)
 assert(sessions._link == agent_b, "several: keeps a link that is already here")
 
+-- link_here after a peek: takes b's preferred agent (old_b was viewed last)
+sessions._link = agent_a
+arrive(a)
+sessions.keep_link_for(b)
+arrive(b)
+assert(sessions._link == agent_a, "peeked")
+sessions.link_here()
+assert(sessions._link == old_b, "link_here takes the last viewed agent here")
+
 print("arrival: ok")
