@@ -149,6 +149,10 @@ lua/switchyard/
                              `seen_cwd`; blocked move kept in `follow_to`, retried on
                              BufWritePost), fs_event watch on adapter.watch_dir
                              (debounced 300 ms, fires SwitchyardSessionsChanged)
+  actions.lua                confirm(title, yes_label, fn) (menu, "No" first),
+                             create_worktree(cwd, on_done(path)) (vim.ui.input, no switch),
+                             remove_worktree(cwd, wt, on_done) (refuses current/main),
+                             stop_agent(session, on_done) (tmux kill-session)
   launch.lua                 start(adapter, cmd, label, cwd?, cb)/new/continue/fork/pick —
                              agents start in tmux in `cwd` (default editor cwd), wait for
                              registration (poll 500 ms, 30 s), then link only if the agent
@@ -156,7 +160,9 @@ lua/switchyard/
   ui.lua                     shared highlights (linked to standard groups, default=true)
                              + hide/show cursor (guicursor → blended hl), one shared save;
                              badge text color picked by WCAG contrast (Normal fg vs bg)
-  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9)
+  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
+                             used for every choice (only pickers.lua's fallback still
+                             uses vim.ui.select, retired later)
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers;
                              follow edits (recursive watcher, see Status)
@@ -235,18 +241,13 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 
 ### Open (small)
 
-- `ask_about_link` and `sessions.pick` still use `vim.ui.select` → menu.lua.
 - `config.setup` has no unknown-option warning yet.
 - `keys.yard` will be redefined by the two-view yard (see the key table in the
   yard part 2 step); add `yard.view = "worktrees"`.
 
 ### Next steps (in this order)
 
-1. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
-   via vim.ui.input, remove_worktree(cwd, wt, on_done) (refuse current/main,
-   confirm), stop_agent(session, on_done) (tmux kill-session, confirm).
-   Confirmations via menu.lua.
-2. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
+1. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
    part 1's layout):
    - ONE floating window, sized to content: width = longest row, clamped
      ~50..90 cols; height = number of rows, capped (~60% of lines). Centered.
@@ -272,7 +273,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
      SwitchyardSessionsChanged redraws. Remove: the filter/normal layouts, the
      detail window, the mode badge, expand/collapse.
    - Iterate on size in real use; aim for "as small as possible".
-3. **Yard part 2 — actions per view** (row under cursor is the subject;
+2. **Yard part 2 — actions per view** (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
    | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -296,7 +297,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    - With several adapters installed, ask which one (menu); with one, use it.
    - Later: agent state (working / waiting) from pi-worktrunk's `wt list`
      markers; lock marker for locked worktrees.
-4. **Dispatch** (after yard part 2; shares code with spin-off):
+3. **Dispatch** (after yard part 2; shares code with spin-off):
 
 - Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
   positional messages: `pi [options] [--] [@files...] [messages...]`),
@@ -315,7 +316,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   global key (I'll map Cmd+Shift+D in n + x mode).
 - Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
 
-5. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
+4. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
     the source) but with a persistent draft and multiple contexts:
 
@@ -344,12 +345,12 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Fork note (currently a separate first message from launch.fork) could move
   in front of the first real prompt.
 
-6. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
+5. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
    in the yard replaces the project picker) and the old keymaps. It calls
    fzf-lua directly, which breaks the dependency rule until then.
-7. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
+6. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.
-8. README, docs, fuzzy matching, polish.
+7. README, docs, fuzzy matching, polish.
 
 Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
 it). Worktree rows may still show the diff size vs the default branch later

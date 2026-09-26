@@ -1,5 +1,6 @@
 local worktrunk = require("switchyard.worktrunk")
 local projects = require("switchyard.projects")
+local actions = require("switchyard.actions")
 
 local M = {}
 
@@ -13,40 +14,6 @@ local function switch_later(path)
 	-- Let the picker close completely before touching windows
 	vim.schedule(function()
 		projects.switch(path)
-	end)
-end
-
-local function create(cwd)
-	vim.ui.input({ prompt = "New branch: " }, function(branch)
-		if not branch or branch == "" then
-			return
-		end
-		vim.api.nvim_echo({ { "switchyard: creating " .. branch .. " …" } }, false, {})
-		worktrunk.create(cwd, branch, function(path, err)
-			if not path then
-				return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
-			end
-			projects.switch(path)
-		end)
-	end)
-end
-
-local function remove(cwd, wt, reopen)
-	if wt.current then
-		return vim.notify("switchyard: you're in this worktree. Switch away first.", vim.log.levels.WARN)
-	end
-	if wt.main then
-		return vim.notify("switchyard: the main worktree can't be removed.", vim.log.levels.WARN)
-	end
-	if vim.fn.confirm("Remove worktree " .. wt.branch .. "?", "&Yes\n&No", 2) ~= 1 then
-		return
-	end
-	worktrunk.remove(cwd, wt.branch, function(ok, err)
-		if not ok then
-			return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
-		end
-		vim.notify("switchyard: removed " .. wt.branch)
-		reopen()
 	end)
 end
 
@@ -72,14 +39,14 @@ local function pick_with_fzf(worktrees, cwd)
 			end,
 			[keys.new_worktree] = function()
 				vim.schedule(function()
-					create(cwd)
+					actions.create_worktree(cwd, projects.switch)
 				end)
 			end,
 			[keys.remove_worktree] = function(selected)
 				local wt = by_line[selected[1]]
 				if wt then
 					vim.schedule(function()
-						remove(cwd, wt, M.worktrees)
+						actions.remove_worktree(cwd, wt, M.worktrees)
 					end)
 				end
 			end,

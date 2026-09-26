@@ -121,13 +121,18 @@ function M.pick()
 	if #sessions == 0 then
 		return vim.notify("switchyard: no running agent sessions", vim.log.levels.WARN)
 	end
-	vim.ui.select(sessions, { prompt = "Link to agent", format_item = M.describe }, function(s)
-		if s then
-			vim.schedule(function()
-				M.link(s)
-			end)
-		end
-	end)
+	require("switchyard.menu").open({
+		title = "link to agent",
+		items = vim.tbl_map(function(s)
+			return {
+				label = (M.tmux_name(s) or s.adapter.name) .. " · " .. vim.fn.fnamemodify(s.cwd, ":~"),
+				key = link and link.pid == s.pid and "linked" or nil,
+				action = function()
+					M.link(s)
+				end,
+			}
+		end, sessions),
+	})
 end
 
 ---------------------------------------------------------------------------
@@ -162,16 +167,7 @@ local function ask_about_link(current)
 		end,
 	})
 
-	vim.ui.select(choices, {
-		prompt = "No agent in this worktree",
-		format_item = function(c)
-			return c.label
-		end,
-	}, function(choice)
-		if choice then
-			vim.schedule(choice.action)
-		end
-	end)
+	require("switchyard.menu").open({ title = "no agent in this worktree", items = choices })
 end
 
 -- The viewer showed this agent (it wins when a worktree has several agents)
