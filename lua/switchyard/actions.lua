@@ -43,7 +43,7 @@ function M.create_worktree(cwd, on_done)
 		if not branch or branch == "" then
 			return
 		end
-		vim.api.nvim_echo({ { "switchyard: creating " .. branch .. " …" } }, false, {})
+		require("switchyard.util").progress("switchyard: creating " .. branch .. " …")
 		worktrunk.create(cwd, branch, function(path, err)
 			if not path then
 				return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
@@ -85,7 +85,7 @@ function M.remove_worktree(cwd, wt, on_done, agents)
 		for _, session in ipairs(stop_agents and agents or {}) do
 			kill(session, function() end)
 		end
-		vim.api.nvim_echo({ { "switchyard: removing " .. wt.branch .. " …" } }, false, {})
+		require("switchyard.util").progress("switchyard: removing " .. wt.branch .. " …")
 		worktrunk.remove(cwd, wt.branch, function(ok, err)
 			if not ok then
 				return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)

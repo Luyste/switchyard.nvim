@@ -8,9 +8,10 @@ between worktrees and agents, a terminal split to talk to an agent, a prompt
 builder that sends code from your editor, and an editor that keeps up with
 what the agent is doing.
 
-<!-- Demo: add docs/media/demo.gif here once recorded (see "Recording the demo" below)
-![switchyard demo](docs/media/demo.gif)
--->
+![The yard: worktrees and agents, the action menu, filtering and switching](demo/media/yard.gif)
+
+<sub>The demos use a terminal with `<Space>` as leader; switchyard sets no keys
+itself (see [Keymaps](#keymaps)).</sub>
 
 ## Why
 
@@ -45,64 +46,6 @@ together:
   you're typing in the agent's terminal.
 - **Follow edits**: optionally open whatever file the agent just changed,
   with the cursor on the change.
-
-## A look at it
-
-The yard, worktrees view: `@` marks your current worktree, `● linked` the
-agent your editor talks to.
-
-```
-╭──────────────────────────────────────────────────╮
-│ switchyard · shoebox · worktrees                 │
-│ 1 @ main  ^|                            ● linked │
-│ 2   feature/worktree-test  _                 ● 1 │
-│ 3   fix-parser  _                            ● 1 │
-│ ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . action… │
-╰──────────────────────────────────────────────────╯
-```
-
-`Tab` switches to the agents view:
-
-```
-╭──────────────────────────────────────────────────╮
-│ switchyard · agents                              │
-│ 1 ● pi-shoebox                              main │
-│ 2 ● pi-shoebox_feature     feature/worktree-test │
-│ 3 ● pi-shoebox_fix-parser             fix-parser │
-│ ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  . acti… │
-╰──────────────────────────────────────────────────╯
-```
-
-`.` shows what you can do with the selected row:
-
-```
-╭────────────────────────────────────────────────────────────────╮
-│ switchyard · main                                              │
-│ 1  switch here                                               ⏎ │
-│ 2  peek: switch, keep the link                              ⇧⏎ │
-│ 3  new worktree                                              n │
-│ 4  dispatch: a task for a new agent in a new worktree        N │
-│ 5  start an agent here                                       a │
-│ 6  continue the last session here                            c │
-│ 7  fork the linked agent here                                f │
-│ 8  copy path                                                 y │
-│ 9  remove worktree                                           D │
-│ ⏎ choose  ^N/^P move  1-9 pick  esc cancel                     │
-╰────────────────────────────────────────────────────────────────╯
-```
-
-The prompt builder, with a selection from `detect.go` added as context:
-
-```
-╭────────────────────────────────────────────────────────────────────────────────╮
-│ → pi-shoebox (linked)                                                          │
-│ internal/media/detect.go:32-35 (4 lines)                                       │
-╰────────────────────────────────────────────────────────────────────────────────╯
-╭────────────────────────────────────────────────────────────────────────────────╮
-│Why does Inspect return an empty Info on errors?                                │
-│ ⏎ send  ⇧⏎ new line  ^O hand over  ^T target  ^F file  ^D remove               │
-╰────────────────────────────────────────────────────────────────────────────────╯
-```
 
 ## Requirements
 
@@ -234,6 +177,8 @@ in the yard (`v` in the agents view).
 
 ### The prompt builder
 
+![Selecting code, asking about it, and the agent's answer in the viewer](demo/media/prompt.gif)
+
 `prompt()` opens a small input for a prompt to the linked agent. In visual
 mode, the selection is added as **context** first. The draft is kept when the
 builder closes (it disappears as soon as you click elsewhere), so you can
@@ -258,6 +203,8 @@ worktree never edits the wrong checkout.
 
 ### Dispatch
 
+![Dispatching a task: a new worktree with its own agent appears in the yard](demo/media/dispatch.gif)
+
 `dispatch()` (or `N` in the yard) opens the prompt builder aimed at a new
 worktree. Write the task and press `Enter`: switchyard suggests a branch name
 from the first line, creates the worktree, and starts an agent there with
@@ -265,6 +212,8 @@ your text as its first message. Your editor and your link stay where they
 are; the new agent shows up in the yard.
 
 ### Live reload and following edits
+
+![Following edits: the file the agent changes opens on the changed line](demo/media/follow.gif)
 
 With `live_reload` on (the default), files open in Neovim reload when an agent
 changes them, also while you're typing in the viewer. Buffers with unsaved
@@ -342,15 +291,12 @@ switchyard is young and used daily with pi. Planned: Claude Code support,
 showing whether an agent is working or waiting for you, and choosing the base
 branch for dispatch.
 
-## Recording the demo
+## Development
 
-(For maintainers; remove this section once the media is in.) Record in
-Neovide with macOS screen recording (`Cmd+Shift+5`), keep clips short, then
-turn them into GIFs:
-
-```sh
-ffmpeg -i clip.mov -vf "fps=12,scale=1200:-1:flags=lanczos" -loop 0 docs/media/demo.gif
-```
+Tests run headless: `for t in tests/*.lua; do nvim --headless -u NONE --cmd "set rtp+=." -l $t; done`.
+The demo GIFs are recorded with [vhs](https://github.com/charmbracelet/vhs):
+`demo/record.sh` builds a demo repo with agents (needs pi with pi-nvim) and
+records every `demo/*.tape`.
 
 ## License
 

@@ -402,6 +402,9 @@ it). Worktree rows may still show the diff size vs the default branch later
   delete them explicitly on close.
 - Measure display width with `vim.fn.strdisplaywidth`, not `#` (bytes).
 - The statusline must never do I/O: use cached values.
+- A message longer than the message line makes Neovim stop at "Press ENTER"
+  and swallow the next key: progress goes through `util.progress` (cut to
+  `v:echospace`), notifications stay short (no long tmux names or paths).
 - A pending redraw (e.g. the yard closing, insert mode ending) wipes a message
   shown right before it: `redraw` before `vim.notify` in switch paths.
 - `:only` also closes the viewer: whoever switches must bring it back.

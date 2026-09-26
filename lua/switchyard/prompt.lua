@@ -295,6 +295,7 @@ local function clear()
 	highlight(false)
 	state.contexts = {}
 	layout()
+	vim.cmd("redrawstatus") -- the DRAFT marker
 end
 
 -- A branch name from the task's first line: "Add dark mode!" -> "add-dark-mode"
@@ -321,7 +322,7 @@ local function dispatch()
 			if not adapter.task_cmd then
 				return vim.notify("switchyard: " .. adapter.name .. " can't start with a task", vim.log.levels.WARN)
 			end
-			vim.api.nvim_echo({ { "switchyard: creating " .. branch .. " …" } }, false, {})
+			require("switchyard.util").progress("switchyard: creating " .. branch .. " …")
 			require("switchyard.worktrunk").create(cwd, branch, function(path, err)
 				if not path then
 					return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)

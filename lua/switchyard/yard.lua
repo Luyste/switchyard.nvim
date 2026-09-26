@@ -181,10 +181,21 @@ end
 -- Title, footer, layout
 ---------------------------------------------------------------------------
 
+-- The repo's name: its main worktree's folder (the current one may be a
+-- long "repo.branch" folder)
+local function repo_name()
+	for _, wt in ipairs(state.worktrees or {}) do
+		if wt.main then
+			return vim.fn.fnamemodify(wt.path, ":t")
+		end
+	end
+	return vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
+end
+
 local function title()
 	local parts = { { " switchyard ", "SwitchyardHeading" } }
 	if view == "worktrees" then
-		table.insert(parts, { "· " .. vim.fn.fnamemodify(vim.fn.getcwd(), ":t") .. " ", "SwitchyardDim" })
+		table.insert(parts, { "· " .. repo_name() .. " ", "SwitchyardDim" })
 	end
 	table.insert(parts, { "· " .. view .. " ", "SwitchyardDim" })
 	return parts
@@ -284,7 +295,12 @@ local function render()
 		parts[1] = { b = b }
 	end
 
-	-- As small as possible: sized to the content, within limits
+	-- As small as possible: sized to the content (and the title), within limits
+	local title_width = 0
+	for _, part in ipairs(title()) do
+		title_width = title_width + width_of(part[1])
+	end
+	want = math.max(want, title_width + 1)
 	local width = math.min(math.max(50, math.min(90, want)), vim.o.columns - 4)
 	local height = math.max(1, math.min(#parts, math.floor(vim.o.lines * 0.6)))
 

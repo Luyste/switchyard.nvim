@@ -30,6 +30,14 @@ local function wait_for_session(adapter, cwd, known, callback)
 	)
 end
 
+-- A short tmux session name for an agent in folder `cwd`: worktrunk's
+-- "<repo>.<branch>" folders drop the "<repo>." part; at most 32 characters
+local function session_name(adapter, cwd)
+	local folder = vim.fn.fnamemodify(cwd, ":t")
+	local branch = folder:match("^[^.]+%.(.+)$") or folder -- ponytail: a repo name with a dot keeps its tail
+	return (adapter.name .. "-" .. branch):sub(1, 32)
+end
+
 -- Start `cmd` for `adapter` in a new tmux session in `cwd` (default: the
 -- editor's folder). Links to it when it runs where the editor is, once it has
 -- registered; an agent started in another worktree only gets a message.
@@ -41,12 +49,12 @@ function M.start(adapter, cmd, label, cwd, callback)
 		known[s.pid] = true
 	end
 
-	tmux.free_name(adapter.name .. "-" .. vim.fn.fnamemodify(cwd, ":t"), function(name)
+	tmux.free_name(session_name(adapter, cwd), function(name)
 		tmux.new(name, cwd, cmd, function(ok, err)
 			if not ok then
 				return vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
 			end
-			vim.api.nvim_echo({ { ("switchyard: starting %s (tmux: %s) …"):format(label, name) } }, false, {})
+			require("switchyard.util").progress(("switchyard: starting %s …"):format(label))
 
 			wait_for_session(adapter, cwd, known, function(s)
 				if not s then
@@ -63,7 +71,7 @@ function M.start(adapter, cmd, label, cwd, callback)
 				if s.cwd == vim.fn.getcwd() then
 					sessions.link(s)
 				else
-					vim.notify(("switchyard: started %s in %s"):format(name, vim.fn.fnamemodify(cwd, ":t")))
+					vim.notify("switchyard: started " .. name)
 				end
 				if callback then
 					callback(s)
