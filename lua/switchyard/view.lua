@@ -268,6 +268,26 @@ function M.cycle(delta)
 	end)
 end
 
+-- Jump between the viewer and the editor, in terminal and normal mode.
+-- In the viewer: back to the window you came from. Elsewhere: into the viewer
+-- (typing right away), opening it first when it's hidden.
+function M.focus()
+	local current = vim.api.nvim_get_current_win()
+	if current == viewer.win then
+		vim.cmd.stopinsert() -- also ends terminal mode; a window change alone doesn't always
+		local previous = vim.fn.win_getid(vim.fn.winnr("#"))
+		if previous ~= 0 and previous ~= viewer.win then
+			return vim.api.nvim_set_current_win(previous)
+		end
+		return vim.cmd("wincmd p")
+	end
+	if not valid_win(viewer.win) then
+		return M.toggle()
+	end
+	vim.api.nvim_set_current_win(viewer.win)
+	vim.cmd.startinsert()
+end
+
 -- Cmd+J: hide the viewer, or show the linked agent (or one from this worktree)
 function M.toggle()
 	if valid_win(viewer.win) then

@@ -58,6 +58,11 @@ function M.prev_agent()
 	require("switchyard.view").cycle(-1)
 end
 
+-- Jump between the viewer and the editor (opens the viewer when hidden)
+function M.focus_view()
+	require("switchyard.view").focus()
+end
+
 function M.open_external()
 	local s = require("switchyard.sessions").linked()
 	if not s then
