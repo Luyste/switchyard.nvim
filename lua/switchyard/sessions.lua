@@ -147,37 +147,6 @@ end
 -- Arriving in a folder
 ---------------------------------------------------------------------------
 
-local function ask_about_link(current)
-	local launch = require("switchyard.launch")
-	local choices = {
-		{ label = "Stay linked to " .. M.describe(current), action = function() end },
-	}
-	if current.adapter.fork_cmd then
-		table.insert(choices, {
-			label = "Fork " .. M.describe(current) .. " into this worktree",
-			action = function()
-				launch.fork(current)
-			end,
-		})
-	end
-	for _, adapter in ipairs(require("switchyard.adapters").active()) do
-		table.insert(choices, {
-			label = "Start a new " .. adapter.name .. " here",
-			action = function()
-				launch.new(adapter)
-			end,
-		})
-	end
-	table.insert(choices, {
-		label = "Unlink",
-		action = function()
-			M.link(nil)
-		end,
-	})
-
-	require("switchyard.menu").open({ title = "no agent in this worktree", items = choices })
-end
-
 -- The viewer showed this agent (it wins when a worktree has several agents)
 function M.viewed(pid)
 	view_count = view_count + 1
@@ -230,10 +199,7 @@ local function on_arrival()
 			M.link(preferred(here), true)
 		end
 	elseif current and current.cwd ~= cwd then
-		local mode = require("switchyard.config").options.empty_worktree
-		if mode == "ask" then
-			ask_about_link(current)
-		elseif mode == "unlink" then
+		if require("switchyard.config").options.empty_worktree == "unlink" then
 			M.link(nil, true)
 		end
 		-- "keep": nothing to do, the statusline shows where the linked agent is

@@ -30,9 +30,7 @@ local function badge(group, source)
 end
 
 function M.set_highlights()
-	badge("SwitchyardFilterBadge", "Directory")
 	badge("SwitchyardNormalBadge", "DiagnosticOk")
-	badge("SwitchyardLinkedBadge", "DiagnosticOk")
 	vim.api.nvim_set_hl(0, "SwitchyardHiddenCursor", { blend = 100, nocombine = true })
 	-- Some themes (vague) make PmenuSel `reverse` without colors: on a row with
 	-- colored text that turns every colored piece into a block. Use Visual then.
@@ -41,7 +39,6 @@ function M.set_highlights()
 		SwitchyardSelection = (pmenu_sel.bg and not pmenu_sel.reverse) and "PmenuSel" or "Visual",
 		SwitchyardHeading = "Title",
 		SwitchyardDim = "Comment",
-		SwitchyardLabel = "Comment",
 		SwitchyardCurrent = "Directory",
 		SwitchyardSymbols = "DiagnosticWarn",
 		SwitchyardAgent = "Statement",

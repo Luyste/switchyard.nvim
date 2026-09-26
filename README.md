@@ -292,9 +292,9 @@ The defaults:
 
 ```lua
 require("switchyard").setup({
-  agents = { "pi", "claude" }, -- adapters to use, when installed
+  agents = { "pi" },           -- agent adapters to use, when installed
   follow = true,               -- follow the linked agent to other worktrees
-  empty_worktree = "keep",     -- arriving where no agent runs: "keep" | "unlink" | "ask"
+  empty_worktree = "keep",     -- arriving where no agent runs: "keep" | "unlink" the link
   terminal = "auto",           -- external terminal: "auto" | "ghostty" | "kitty" | "wezterm"
                                --   | "alacritty" | "terminal.app" | function(cmd) return argv end
   live_reload = true,          -- reload open files when agents change them

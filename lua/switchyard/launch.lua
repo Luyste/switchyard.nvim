@@ -33,7 +33,7 @@ end
 -- Start `cmd` for `adapter` in a new tmux session in `cwd` (default: the
 -- editor's folder). Links to it when it runs where the editor is, once it has
 -- registered; an agent started in another worktree only gets a message.
--- callback(session, tmux_name) is optional.
+-- callback(session) is optional.
 function M.start(adapter, cmd, label, cwd, callback)
 	cwd = cwd or vim.fn.getcwd()
 	local known = {}
@@ -66,7 +66,7 @@ function M.start(adapter, cmd, label, cwd, callback)
 					vim.notify(("switchyard: started %s in %s"):format(name, vim.fn.fnamemodify(cwd, ":t")))
 				end
 				if callback then
-					callback(s, name)
+					callback(s)
 				end
 			end)
 		end)

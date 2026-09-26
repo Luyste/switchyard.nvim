@@ -1,9 +1,9 @@
 local M = {}
 
 M.defaults = {
-	agents = { "pi", "claude" },
+	agents = { "pi" }, -- agent adapters (lua/switchyard/adapters/<name>.lua)
 	follow = true,
-	empty_worktree = "keep",
+	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
 	terminal = "auto",
 	live_reload = true, -- open files follow changes made by agents
 	yard = {

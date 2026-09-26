@@ -63,7 +63,7 @@ anything, then **inspect the actual code**: some items below are marked
 - **Arrival rules** (on `VimEnter` / `DirChanged global`):
   - exactly one agent in the new folder → link to it silently;
   - no agent → **keep the current link** (config `empty_worktree = "keep"`;
-    `"unlink"` and `"ask"` also exist). Keeping the link enables "peek into
+    `"unlink"` also exists; `"ask"` was removed: the yard covers it). Keeping the link enables "peek into
     worktree C, copy a snippet, send it to the orchestrator in worktree A";
   - several agents → keep the link if it's already one of them; otherwise link
     the one the viewer showed last, else the most recently started (no prompt:
@@ -112,7 +112,7 @@ anything, then **inspect the actual code**: some items below are marked
 - **Messages**: progress → `nvim_echo(…, false, {})` (no history); results and
   errors → `vim.notify`. Anything that changes layout calls `vim.cmd("redraw")`
   before notifying (avoids "Press ENTER" prompts that break window changes).
-- **Callbacks from pickers/menus that touch windows are `vim.schedule`d.**
+- **Callbacks from menus that touch windows are `vim.schedule`d.**
 - Terminal-agnostic, OS-agnostic where possible (repo will be public).
 
 ## Module map (as designed; verify against code)
@@ -146,9 +146,9 @@ lua/switchyard/
                              /tmp/pi-nvim-sockets/*.info; newest per pid; alive check;
                              socket = info.socket or file minus ".info"), send(session,
                              msg, cb) over the unix socket ({"type":"prompt"})
-  adapters/claude.lua        EMPTY placeholder (must stay skipped: type check)
   sessions.lua               all, in_folder, linked (fresh), link(session, quiet),
-                             status (cached), linked_pid (cached), describe, pick,
+                             status (cached), linked_pid (cached), describe, name
+                             (tmux name or agent name), with_tmux_name(s, cb),
                              resolve_tmux (public; caches tmux names; fires
                              User SwitchyardSessionsChanged), tmux_name, arrival rules,
                              follow (only on actual MOVE of linked agent: compares with

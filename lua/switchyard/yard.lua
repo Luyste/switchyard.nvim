@@ -479,10 +479,6 @@ local function warn(message)
 	vim.notify("switchyard: " .. message, vim.log.levels.WARN)
 end
 
-local function with_adapter(callback)
-	require("switchyard.actions").with_adapter(callback)
-end
-
 -- Choose one of this repo's worktrees (the current one first, `except` left
 -- out), or create a new one. callback(worktree): { path, branch }
 local function with_worktree(title, except, callback)
@@ -520,15 +516,13 @@ local actions = {
 		{
 			key = "activate",
 			label = "switch here",
-			run = function(row)
-				activate(row)
-			end,
+			run = activate,
 		},
 		{
 			key = "alt_activate",
 			label = "peek: switch, keep the link",
 			run = function(row)
-				activate(row, true)
+				activate(row, true) -- Shift+Enter
 			end,
 		},
 		{
@@ -552,7 +546,7 @@ local actions = {
 			key = "start_agent",
 			label = "start an agent here",
 			run = function(row)
-				with_adapter(function(adapter)
+				require("switchyard.actions").with_adapter(function(adapter)
 					require("switchyard.launch").new(adapter, row.path)
 				end)
 			end,
@@ -561,7 +555,7 @@ local actions = {
 			key = "continue_agent",
 			label = "continue the last session here",
 			run = function(row)
-				with_adapter(function(adapter)
+				require("switchyard.actions").with_adapter(function(adapter)
 					require("switchyard.launch").continue(adapter, row.path)
 				end)
 			end,
@@ -601,15 +595,13 @@ local actions = {
 		{
 			key = "activate",
 			label = "go to: switch to its worktree and link",
-			run = function(row)
-				activate(row)
-			end,
+			run = activate,
 		},
 		{
 			key = "alt_activate",
 			label = "link only, stay here",
 			run = function(row)
-				activate(row, true)
+				activate(row, true) -- Shift+Enter
 			end,
 		},
 		{
@@ -633,7 +625,7 @@ local actions = {
 			any_row = true,
 			run = function()
 				with_worktree("new agent in", nil, function(wt)
-					with_adapter(function(adapter)
+					require("switchyard.actions").with_adapter(function(adapter)
 						require("switchyard.launch").new(adapter, wt.path)
 					end)
 				end)
