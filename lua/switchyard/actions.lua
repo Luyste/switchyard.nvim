@@ -1,4 +1,4 @@
--- Actions on worktrees and agents, shared by the pickers and the yard.
+-- Actions on worktrees and agents, shared by the yard and the prompt builder.
 -- Each takes an optional on_done, called after the action succeeded.
 local worktrunk = require("switchyard.worktrunk")
 

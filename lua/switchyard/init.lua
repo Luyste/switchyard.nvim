@@ -12,14 +12,6 @@ function M.switch(dir)
 	require("switchyard.projects").switch(dir)
 end
 
-function M.pick_worktree()
-	require("switchyard.pickers").worktrees()
-end
-
-function M.pick_agent()
-	require("switchyard.sessions").pick()
-end
-
 -- Show the file the agent just changed (on/off; nil toggles)
 function M.follow_edits(on)
 	require("switchyard.live").follow_edits(on)
@@ -68,10 +60,6 @@ end
 
 function M.status()
 	return require("switchyard.sessions").status()
-end
-
-function M.start_agent()
-	require("switchyard.launch").pick()
 end
 
 function M.open_yard()

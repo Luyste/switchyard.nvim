@@ -13,10 +13,6 @@ M.defaults = {
 		width = 0.45, -- share of the editor's width for the viewer split
 	},
 	keys = {
-		picker = {
-			new_worktree = "alt-n",
-			remove_worktree = "alt-d",
-		},
 		-- Inside the yard (buffer-local). More arrive with the yard's actions.
 		yard = {
 			activate = "<CR>", -- worktrees: switch · agents: go to (switch + link)

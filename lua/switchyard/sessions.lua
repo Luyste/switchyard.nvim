@@ -122,26 +122,6 @@ function M.status()
 	local where = link.cwd ~= vim.fn.getcwd() and (" (in " .. vim.fn.fnamemodify(link.cwd, ":t") .. ")") or ""
 	return label .. where
 end
--- Pick any running session to link to
-function M.pick()
-	local sessions = M.all()
-	if #sessions == 0 then
-		return vim.notify("switchyard: no running agent sessions", vim.log.levels.WARN)
-	end
-	require("switchyard.menu").open({
-		title = "link to agent",
-		items = vim.tbl_map(function(s)
-			return {
-				label = (M.tmux_name(s) or s.adapter.name) .. " · " .. vim.fn.fnamemodify(s.cwd, ":~"),
-				key = link and link.pid == s.pid and "linked" or nil,
-				action = function()
-					M.link(s)
-				end,
-			}
-		end, sessions),
-	})
-end
-
 ---------------------------------------------------------------------------
 -- Arriving in a folder
 ---------------------------------------------------------------------------

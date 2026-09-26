@@ -99,43 +99,4 @@ function M.fork(source, cwd)
 	end)
 end
 
--- Pick what to start in the current folder
-function M.pick()
-	local cwd = vim.fn.getcwd()
-	local choices = {}
-	for _, adapter in ipairs(require("switchyard.adapters").active()) do
-		table.insert(choices, {
-			label = "New " .. adapter.name,
-			run = function()
-				M.new(adapter)
-			end,
-		})
-		table.insert(choices, {
-			label = "Continue " .. adapter.name,
-			run = function()
-				M.continue(adapter)
-			end,
-		})
-	end
-	for _, s in ipairs(sessions.all()) do
-		if s.cwd ~= cwd and s.adapter.fork_cmd then
-			table.insert(choices, {
-				label = "Fork " .. sessions.describe(s),
-				run = function()
-					M.fork(s)
-				end,
-			})
-		end
-	end
-	if #choices == 0 then
-		return vim.notify("switchyard: no agents installed", vim.log.levels.WARN)
-	end
-	require("switchyard.menu").open({
-		title = "start agent in " .. vim.fn.fnamemodify(cwd, ":t"),
-		items = vim.tbl_map(function(c)
-			return { label = c.label, action = c.run }
-		end, choices),
-	})
-end
-
 return M

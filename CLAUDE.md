@@ -33,8 +33,7 @@ anything, then **inspect the actual code**: some items below are marked
     `vim.schedule`) and `wincmd p`.
   - Keymaps via a helper `sy(fn)` that returns `function() require("switchyard")[fn]() end`
     (function form, so a missing name never breaks startup):
-    `<D-W>` pick_worktree, `<D-A>` pick_agent, `<D-N>` start_agent,
-    `<D-Y>` open_yard (I also want Cmd+Shift+S for the yard), `<D-j>` toggle_view
+    `<D-Y>` open_yard (n + t; I also want Cmd+Shift+S for the yard), `<D-j>` toggle_view
     (n + t), `<D-J>` focus_view (n + t: jump between viewer and editor),
     `<D-O>` open_external, `<D-H>` link_here, `<D-F>` follow_edits (n + t).
     No terminal-mode escape key: Cmd+Shift+J leaves the viewer (Cmd+Esc never
@@ -121,11 +120,11 @@ anything, then **inspect the actual code**: some items below are marked
 ```
 plugin/switchyard.lua        :Switchyard → open the yard (guarded by vim.g.loaded_switchyard)
 lua/switchyard/
-  init.lua                   setup(opts) → config.setup + sessions.setup; public API:
-                             switch, open_yard, pick_worktree, pick_agent,
-                             start_agent, status, toggle_view, open_external
-                             (planned: next_agent, prev_agent)
-  config.lua                 defaults + setup (unknown-option warning; lists replaced
+  init.lua                   setup(opts) → config, sessions, live; public API:
+                             switch, follow_edits, following_edits, prompt, dispatch,
+                             prompt_line, draft_status, link_here, status, open_yard,
+                             toggle_view, focus_view, open_external
+  config.lua                 defaults + setup (no unknown-option warning yet; lists replaced
                              not merged)
   health.lua                 :checkhealth switchyard — programs (git, wt, tmux),
                              external terminal, follow edits, agents/adapters
@@ -137,8 +136,6 @@ lua/switchyard/
   projects.lua               switch(dir): refuse on unsaved, tabonly/only/enew, delete
                              file buffers (buftype==""), stop LSP clients, cd, redraw,
                              notify, fire User SwitchyardSwitched {from,to};
-  pickers.lua                worktrees/projects pickers (fzf-lua direct if installed,
-                             else vim.ui.select). To be REPLACED by the yard.
   tmux.lua                   list, free_name, new(name, cwd, cmd, cb), kill,
                              sessions_for_pids (walks the process tree up to a pane),
                              session_of_pid, attach_cmd. Targets use "=name".
@@ -170,8 +167,7 @@ lua/switchyard/
                              + hide/show cursor (guicursor → blended hl), one shared save;
                              badge text color picked by WCAG contrast (Normal fg vs bg)
   menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
-                             used for every choice (only pickers.lua's fallback still
-                             uses vim.ui.select, retired later)
+                             used for every choice; menu.input for text
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers;
                              follow edits (recursive watcher, see Status)
@@ -371,12 +367,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Fork note (currently a separate first message from launch.fork) could move
   in front of the first real prompt.
 
-4. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
-   is gone: one project per yard) and the old keymaps. It calls
-   fzf-lua directly, which breaks the dependency rule until then.
-5. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
+4. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.
-6. README, docs, fuzzy matching, polish.
+5. README, docs, fuzzy matching, polish.
 
 Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
 it). Worktree rows may still show the diff size vs the default branch later
