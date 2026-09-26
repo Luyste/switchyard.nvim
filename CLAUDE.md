@@ -64,10 +64,30 @@ anything, then **inspect the actual code**: some items below are marked
     `"unlink"` and `"ask"` also exist). Keeping the link enables "peek into
     worktree C, copy a snippet, send it to the orchestrator in worktree A";
   - several agents → keep the current link.
+- **Enter vs Shift+Enter in the yard (worktree switching):**
+  - Enter = **switch**: the editor goes to the worktree and the arrival rules
+    apply (one agent there → the link moves to it).
+  - Shift+Enter = **peek**: the editor goes to the worktree but the link stays
+    on the current agent, whatever the worktree contains (statusline shows
+    `agent (in <other worktree>)`). Used to grab context from B and send it to
+    agent A (with the prompt builder's cross-worktree paths).
+- **Two yard views, one meaning per key:** keys act on what the current view
+  shows (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
+  Enter in the agents view = "go to" (switch + link); Shift+Enter = link only.
+- **Prompt builder = chat convention:** Enter sends, Shift+Enter is a new line.
+- **Dispatch** (fire-and-forget): describe a task → new worktree + agent started
+  there with the task as its first message. The editor does NOT switch and the
+  link does NOT change; the new worktree + working agent simply appear in the yard.
 - **Starting an agent in the editor's current folder links to it.** (Starting in
   another worktree from the yard should NOT link — pending, see launch.lua.)
 - **Viewing ≠ linking.** The viewer can show any agent; the link decides where
   prompts go.
+- **Dependencies:** hard dependencies are PROGRAMS only (git, wt, tmux, the
+  agents; reported by the health check). switchyard never requires another
+  Neovim plugin. Every plugin integration is optional (`pcall(require, …)`),
+  lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
+  simply not offered, and is reported by the health check. Pluggable features
+  follow the `terminal` pattern: `"auto" | <name> | function(...)`.
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.
@@ -115,18 +135,26 @@ lua/switchyard/
                              msg, cb) over the unix socket ({"type":"prompt"})
   adapters/claude.lua        EMPTY placeholder (must stay skipped: type check)
   sessions.lua               all, in_folder, linked (fresh), link(session, quiet),
-                             status (cached), linked_pid (planned), describe, pick,
+                             status (cached), linked_pid (cached), describe, pick,
                              resolve_tmux (public; caches tmux names; fires
                              User SwitchyardSessionsChanged), tmux_name, arrival rules,
-                             follow (only on actual MOVE of linked agent; pending retry
-                             on BufWritePost), fs_event watch on adapter.watch_dir
+                             follow (only on actual MOVE of linked agent: compares with
+                             `seen_cwd`; blocked move kept in `follow_to`, retried on
+                             BufWritePost), fs_event watch on adapter.watch_dir
                              (debounced 300 ms, fires SwitchyardSessionsChanged)
   launch.lua                 start/new/continue/fork/pick — agents start in tmux, wait
                              for registration (poll 500 ms, 30 s), then link
   ui.lua                     shared highlights (linked to standard groups, default=true)
-                             + hide/show cursor (guicursor → blended hl), one shared save
-  yard.lua                   the yard (part 1 done, see below)
-  view.lua                   the viewer (split + external terminal)
+                             + hide/show cursor (guicursor → blended hl), one shared save;
+                             badge text color picked by WCAG contrast (Normal fg vs bg)
+  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9)
+  live.lua                   live reload: one fs_event per folder of loaded file buffers
+                             (refcounted), debounced checktime, skips modified buffers
+  yard.lua                   the yard (part 1 done, see below); close() returns to
+                             the window it was opened from
+  view.lua                   the viewer (split + statusline with agent tabs, cycle,
+                             external terminal)
+tests/live.lua               nvim --headless -u NONE --cmd "set rtp+=." -l tests/live.lua
 ```
 
 ## Status
@@ -161,107 +189,173 @@ lua/switchyard/
   agents in this worktree that run in tmux (one → show, several → choose,
   none → warn). External terminal: `config.terminal = "auto" | name | function(cmd)`,
   built-ins ghostty/kitty/wezterm/alacritty/terminal.app (macOS `open -na`).
+  - Own statusline (set AFTER the terminal buffer is in the window: a local
+    statusline only sticks to the buffer it was set with): TERMINAL/NORMAL badge,
+    agent tabs (`viewable()` → cached `viewer.list`, linked first, `●` = linked,
+    refreshed on SwitchyardSessionsChanged / DirChanged), hint on the right.
+  - Cycling: `view.cycle(delta)` with wraparound, `]a`/`[a` in the viewer,
+    public `next_agent`/`prev_agent` (mapped Cmd+] / Cmd+[ in n + t). Never
+    changes the link.
+- **Badge contrast**: text color = the theme's light or dark color, whichever
+  contrasts more with the badge background.
+- **Live reload** (`live_reload = true`): open files follow the agent's edits,
+  also while in terminal mode. Folder watchers (see live.lua) also catch
+  rename-replace saves.
+- **Switching from any window**: `projects.switch` starts from a fresh window
+  (`botright new` + `only`), so switching while focus is in the tree, the viewer
+  or a float no longer eats the tree window.
+- Checked: `tmux.new` cds inside the shell line; `menu.lua` used by
+  `launch.pick` and the viewer's choice; `ui.lua` used by yard.lua; config has
+  `viewer.width`, `terminal`, `empty_worktree`, `live_reload`.
 
-### Verify (suggested, may not be applied)
+### Open (small)
 
-- `tmux.new` should `cd <cwd> &&` inside the shell line (after rc files), then
-  the agent command, then `; exec $SHELL`.
-- `menu.lua` (yard-style small menu: title, numbered items, optional key/danger,
-  Enter/1-9 choose, Esc/q cancel, cursor hidden, does NOT close on focus loss).
-  Should replace every remaining `vim.ui.select`: `launch.pick`, the viewer's
-  "which agent" choice, `ask_about_link`.
-- `ui.lua` in use by yard.lua (no local copies of highlight/cursor helpers left).
-- Config keys: `keys.yard` should contain activate `<CR>`, toggle `o`, filter `i`,
-  close `q`, refresh `<C-r>`, new_worktree `%`, remove `D`, new_agent `n`,
-  continue_agent `c`, fork_agent `f`, copy_path `y`, view `v`, external `g`,
-  send `s`, move `m`, spin_off `F`, rename `r`. Also `viewer.width = 0.45`,
-  `terminal = "auto"`, `empty_worktree = "keep"`.
+- `ask_about_link` and `sessions.pick` still use `vim.ui.select` → menu.lua.
+- `config.setup` has no unknown-option warning yet.
+- `keys.yard` will be redefined by the two-view yard (see the key table in the
+  yard part 2 step); add `yard.view = "worktrees"`.
 
 ### Next steps (in this order)
 
-1. **Viewer statusline** (window-local `statusline =
-"%!v:lua.require'switchyard.view'.statusline()"`, redraw on
-   `TermEnter/TermLeave`):
-   - mode badge: TERMINAL (blue, `SwitchyardFilterBadge`) / NORMAL (green,
-     `SwitchyardNormalBadge`), hint on the right;
-   - **agent tabs**: all agents the viewer can show for this worktree (linked
-     first), the visible one highlighted, `●` before the linked one (use a new
-     cheap `sessions.linked_pid()` from the cache, never file reads in a
-     statusline).
-2. **Cycling agents in the viewer**: refactor toggle's candidate logic into
-   `viewable(cb)` (stores `viewer.list`), add `view.cycle(delta)` with wraparound,
-   buffer-local `]a`/`[a` in the viewer, public `next_agent`/`prev_agent`
-   (I'll map Cmd+] / Cmd+[ in n+t mode). Cycling doesn't change the link.
-3. **Badge contrast**: badges use theme colors as background; choose the text
-   color by luminance (dark text on light backgrounds, light on dark). NORMAL
-   and LINKED are currently unreadable with my theme (mawkler/onedark).
-4. **Seeing the agent's edits live** (new module, e.g. `live.lua`):
-   - **Live reload**: problem today: `autoread` only checks on focus/buffer/
-     CursorHold events, none of which fire while I'm in terminal mode in the
-     viewer, so open files stay stale while the agent edits them. Watch the file
-     of every loaded normal buffer with `vim.uv.new_fs_event` (start on
-     BufReadPost/BufNewFile, stop on BufDelete/BufWipeout, restart after a
-     rename/replace since editors and agents often write via rename); on change,
-     debounce ~100 ms and `vim.cmd("checktime " .. buf)` inside `vim.schedule`.
-     Never touch buffers with unsaved changes (Neovim's own W12 warning stays).
-     Config: `live_reload = true`. Gitsigns then shows the changed hunks.
-   - **Follow edits** (toggle, off by default; public `follow_edits(bool?)` and
-     `:Switchyard follow-edits`): watch the current worktree recursively
-     (`fs_event` with `recursive = true`, works on macOS; on Linux fall back to
-     watching loaded buffers + polling or skip), ignore `.git`, `node_modules`,
-     build dirs and gitignored files (check with `git check-ignore` in batch or
-     cache `git ls-files`). When a file changes, open it in the main editor window
-     (not the viewer, not the tree) and jump to the first changed hunk (gitsigns
-     `nav_hunk("first")` if available, else leave the cursor). Debounce, and don't
-     steal focus from the viewer: change the editor window's buffer without
-     entering it. Show "following edits" in my statusline via a cheap cached
-     `require("switchyard").following_edits()`.
-5. **launch.lua**: `start(adapter, cmd, label, cwd, callback)` — default cwd =
+1. **Peek (Shift+Enter in the yard)**: `sessions.keep_link_for(dir)` sets a
+   one-time hold (a folder, not a boolean); `on_arrival` consumes it and returns
+   early when the hold matches the new cwd (a stale hold is simply discarded).
+   Yard action `peek()`: close, then schedule `keep_link_for(path)` +
+   `projects.switch(path)`; works on worktree and agent rows (agent row → its
+   worktree). New key `keys.yard.peek = "<S-CR>"`, mapped in the input (insert)
+   and the list (normal); list it in the footer and detail panel as
+   "⇧⏎ switch, keep agent". Check with a key logger that Neovide sends `<S-CR>`.
+2. **Follow edits** (toggle, off by default; public `follow_edits(bool?)`,
+   `following_edits()` (cached, for my statusline) and
+   `:Switchyard follow-edits`): watch the current worktree recursively
+   (`fs_event` with `recursive = true`, works on macOS; elsewhere not offered,
+   health check says so), drop `.git/` at once, filter the rest in batch with
+   `git check-ignore --stdin` after a debounce. When a file changes, open it in
+   the main editor window (not the viewer, not the tree) without entering it,
+   and put the cursor on the first line the agent changed: keep the buffer's
+   lines before the reload and compare with `vim.diff(..., { result_type =
+   "indices" })` (built in, no gitsigns dependency). Skip when the editor
+   window's buffer has unsaved changes.
+3. **launch.lua**: `start(adapter, cmd, label, cwd, callback)` — default cwd =
    editor cwd; only link when cwd == getcwd, otherwise notify "started <name>";
    `new(adapter, cwd)`, `continue(adapter, cwd)`, `fork(source, cwd)`.
-6. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
+4. **actions.lua** (shared by pickers/yard): create_worktree(cwd, on_done)
    via vim.ui.input, remove_worktree(cwd, wt, on_done) (refuse current/main,
    confirm), stop_agent(session, on_done) (tmux kill-session, confirm).
-7. **Yard part 2 — normal-mode actions** (row under cursor is the subject;
-   destructive actions confirm; keys from config):
-   - worktree row: Enter switch, `o` expand, `%` new worktree (refresh, don't
-     switch), `D` remove, `n` new agent here, `c` continue here, `f` fork the
-     linked agent into this worktree, `y` copy path;
-   - agent row: Enter link, `v` view in split, `g` external terminal, `s` open
-     prompt builder aimed at this agent, `m` move (pick worktree → send the agent
-     a message asking it to switch via the worktrunk tool; editor follows if
-     linked), `F` spin off (new worktree + fork this agent into it),
-     `r` rename tmux session (update the name cache), `D` stop;
-   - everywhere: `p` projects inside the yard, `.` action menu for the row
-     (menu.lua with keys shown), `?` help, Ctrl-R refresh.
+   Confirmations via menu.lua.
+5. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
+   part 1's layout):
+   - ONE floating window, sized to content: width = longest row, clamped
+     ~50..90 cols; height = number of rows, capped (~60% of lines). Centered.
+     Title `switchyard · <repo> · worktrees` / `switchyard · agents` in the top
+     border, key hints in the bottom border.
+   - **Two views, Tab toggles**, remembered for the next open (`yard.view`
+     default "worktrees"):
+     - **Worktrees view** (current repo): one row per worktree, number, `@`,
+       branch, status symbols, agent summary on the right (`● linked`, `● 2`).
+       **No expand/collapse** (agents are managed in the agents view).
+     - **Agents view** (all repos): flat list of agent sessions: number, tmux
+       name, worktree/branch (+ repo when not the current one), state; sorted
+       waiting → working → idle (state from pi-worktrunk markers; until then,
+       sort linked first, then by worktree). Replaces "agents elsewhere".
+   - Opens in **normal mode** with the current worktree / linked agent selected.
+     `j`/`k` (and Ctrl-N/P) move, `1`–`9` act as Enter on the Nth row, `q`/Esc close.
+   - Footer hints adapt to the view, most-used keys only, truncated to width.
+     `?` = overlay with all keys. `.` = action menu for the row (menu.lua).
+   - `/` = filter: a 1-line input float appears attached above the yard only
+     while filtering; typing narrows the list; Enter acts; Esc clears the filter
+     and removes the input line. Filtering is a temporary state, not a mode.
+   - Keep: row building, highlights, selection-by-key, auto-close on focus loss,
+     SwitchyardSessionsChanged redraws. Remove: the filter/normal layouts, the
+     detail window, the mode badge, expand/collapse.
+   - Iterate on size in real use; aim for "as small as possible".
+6. **Yard part 2 — actions per view** (row under cursor is the subject;
+   destructive actions confirm; every key configurable in `keys.yard`):
+   | Key                             | Worktrees view                           | Agents view                                                                           |
+   | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
+   | Enter                           | switch (arrival rules: link moves along) | **go to**: switch to its worktree + link                                              |
+   | Shift+Enter                     | peek (keep link)                         | link only, stay where you are                                                         |
+   | `n`                             | new worktree                             | new agent (menu: worktree, current preselected; last item "new worktree…" = dispatch) |
+   | `N`                             | dispatch (new worktree + agent + task)   | dispatch                                                                              |
+   | `D`                             | remove worktree                          | stop agent (tmux kill-session)                                                        |
+   | `a`                             | start agent in this worktree             | —                                                                                     |
+   | `c`                             | continue last agent session here         | —                                                                                     |
+   | `f`                             | fork the linked agent into this worktree | fork this agent (menu: which worktree)                                                |
+   | `F`                             | —                                        | spin off: new worktree + fork this agent into it                                      |
+   | `v` / `g`                       | —                                        | view in split / external terminal                                                     |
+   | `s`                             | —                                        | prompt builder aimed at this agent                                                    |
+   | `m`                             | —                                        | move: pick worktree, ask the agent to switch via the worktrunk tool                   |
+   | `r`                             | —                                        | rename tmux session (update the name cache)                                           |
+   | `y`                             | copy path                                | —                                                                                     |
+   | `p`                             | projects (switch repo)                   | projects                                                                              |
+   | Tab                             | agents view                              | worktrees view                                                                        |
+   | `1`–`9`, `/`, `?`, `.`, `q`/Esc | same in both                             | same in both                                                                          |
    - With several adapters installed, ask which one (menu); with one, use it.
-   - Later: show agent state (working / waiting for you) from pi-worktrunk's
-     `wt list` markers; lock marker for locked worktrees.
-8. **Prompt builder** (Markdown floating window, NOT via the yard):
-   - A **draft** that survives closing. Visual Cmd+L: add the selection as
-     `path:start-end` + fenced code block (filetype) and open the builder;
-     normal Cmd+L: open the builder; Cmd+Shift+L: add current line + its
-     diagnostics.
-   - Inside: Ctrl-S send (adapter.send), Ctrl-O **hand over** (paste into the
-     agent's own input via `tmux load-buffer` + `paste-buffer -p`, no submit,
-     open viewer), Ctrl-T change target (menu), Ctrl-F insert a file path,
-     `q` close keeping the draft, Ctrl-X clear. Draft cleared after sending.
-   - Title shows the target: `→ <tmux name> (linked)` and `(in <worktree>)` when
-     the agent lives elsewhere; no link → ask for a target.
-   - **Cross-worktree paths**: if the target agent's cwd isn't the snippet's
-     worktree, use absolute paths + "(worktree <branch>)", never paths relative
-     to the wrong checkout.
-   - Fork note (currently sent as a separate first message by launch.fork)
-     could move in front of the first real prompt.
+   - Later: agent state (working / waiting) from pi-worktrunk's `wt list`
+     markers; lock marker for locked worktrees.
+7. **Dispatch** (after yard part 2; shares code with spin-off):
+
+- Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
+  positional messages: `pi [options] [--] [@files...] [messages...]`),
+  claude → `{ "claude", prompt }` (interactive session with an opening prompt).
+- UI: a yard-style floating Markdown buffer for the task (multi-line). Branch
+  name suggested from the first line (slug, e.g. `feature/add-dark-mode`),
+  editable before confirming. Base = default branch; one key toggles "branch
+  off the current worktree" → `wt switch --create <b> --base=@ --no-cd --yes`.
+- Flow: create worktree (worktrunk.create, extend with optional base) →
+  `launch.start(adapter, adapter.task_cmd(prompt), label, new_path)` (not the
+  editor's cwd → no link, no switch) → yard refreshes via
+  SwitchyardSessionsChanged (+ `refresh()` for the new worktree).
+- Visual-mode dispatch includes the selection as context with ABSOLUTE path +
+  `(worktree <branch>)` (cross-worktree rule).
+- Keys: yard `N` (`keys.yard.dispatch = "N"`), public `dispatch()` for a
+  global key (I'll map Cmd+Shift+D in n + x mode).
+- Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
+
+8. **Prompt builder** (compact, chat-style; NOT via the yard). Inspired by
+    pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
+    the source) but with a persistent draft and multiple contexts:
+
+- **Layout:** two attached floats, accent border.
+  - Header (not focusable): target line `→ <tmux name> (linked)` / `(in <wt>)`,
+    then ONE LINE PER CONTEXT: `internal/router/router.go:12-14 (3 lines)`,
+    `router_test.go:40 + 2 diagnostics`. The code itself is not shown.
+  - Input: starts 1 line, grows with content (wrap-aware) up to ~8 lines,
+    then scrolls. Plain text prompt.
+- While open, every context range is highlighted (Visual) in its source buffer.
+- **Keys (chat convention):** insert mode Enter = **send**, Shift+Enter = new
+  line (configurable: some terminals can't distinguish Shift+Enter; offer
+  `<C-j>` as an alternative newline key). Esc in insert = normal mode
+  (Vim-standard); `q`/Esc in normal = close, **keeping the draft**. Ctrl-O =
+  hand over (paste into the agent's own input via tmux, no submit, open
+  viewer), Ctrl-T = change target (menu), Ctrl-F = add a file path, `dd` on a
+  header line (or Ctrl-X in normal) = remove that context / clear all,
+  `e` = expand the whole draft into a Markdown buffer for editing the code.
+- **Draft:** survives closing and focus loss; cleared after send/hand-over.
+  Visual Cmd+L adds the selection (file, range, filetype, text) and opens;
+  normal Cmd+L opens; Cmd+Shift+L adds the current line + its diagnostics.
+- **Message assembly at send time:** prompt text first, then each context as
+  `From <path>:<a>-<b>:` + fenced code block with filetype (diagnostics as a
+  list). Paths relative to the target agent's worktree when it's the same
+  worktree; otherwise ABSOLUTE + `(worktree <branch>)`.
+- Fork note (currently a separate first message from launch.fork) could move
+  in front of the first real prompt.
+
 9. Retire `pickers.lua` (yard filter mode replaces the worktree picker; `p`
-   in the yard replaces the project picker) and the old keymaps.
+   in the yard replaces the project picker) and the old keymaps. It calls
+   fzf-lua directly, which breaks the dependency rule until then.
 10. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
     hand-over already works for any agent in tmux.
 11. README, docs, fuzzy matching, polish.
 
+Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
+it). Worktree rows may still show the diff size vs the default branch later
+(`default_branch.diff.added/deleted` in the wt list JSON).
+
 ## Design references
 
-- Yard mockups (6 artboards: filter mode, filter + expanded, normal mode with a
+- Yard mockups (OUTDATED layout: two modes + detail panel; superseded by the
+  compact yard step. Still useful for colors/badges/row content. 6 artboards: filter mode, filter + expanded, normal mode with a
   worktree selected, with an agent selected, `.` action menu, prompt builder):
   https://claude.ai/artifact/RyPyrsqwLEGBmypLWLQYcg
 - Workflow doc (conventions, setup overview):
