@@ -35,8 +35,10 @@ anything, then **inspect the actual code**: some items below are marked
     (function form, so a missing name never breaks startup):
     `<D-W>` pick_worktree, `<D-A>` pick_agent, `<D-N>` start_agent,
     `<D-Y>` open_yard (I also want Cmd+Shift+S for the yard), `<D-j>` toggle_view
-    (n + t), `<D-S-j>` open_external, `t <D-r>` → `<C-\><C-n>` (Cmd+Esc never reaches Neovim in Neovide),
-    `t <C-w>h/j/k/l/w/p` → `<C-\><C-n><C-w>…` for window moves from terminals.
+    (n + t), `<D-J>` focus_view (n + t: jump between viewer and editor),
+    `<D-O>` open_external, `<D-H>` link_here, `<D-F>` follow_edits (n + t).
+    No terminal-mode escape key: Cmd+Shift+J leaves the viewer (Cmd+Esc never
+    reaches Neovim in Neovide anyway).
   - My statusline (`lua/config/statusline.lua`) is global (`laststatus=3`):
     a badge for what has focus (FILE / TREE / AGENT = buffer `switchyard://…` /
     YARD = filetype `switchyard` / TERM), repo · branch, file or viewed agent,
@@ -191,19 +193,20 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
     `SwitchyardSessionsChanged` / `VimResized`.
 - **Viewer**: Cmd+J toggles a right split (`botright vsplit`, width
   `config.viewer.width`) with a terminal running `tmux attach -t =name`; reused
-  window; hidden buffer kept; `q` hides; BufEnter → startinsert; TermClose →
+  window; hidden buffer kept; BufEnter → startinsert; TermClose →
   cleanup. Toggle rules: viewer open → hide; else linked agent if in tmux; else
   agents in this worktree that run in tmux (one → show, several → choose,
   none → warn). External terminal: `config.terminal = "auto" | name | function(cmd)`,
   built-ins ghostty/kitty/wezterm/alacritty/terminal.app (macOS `open -na`).
   - Own **winbar** (works with my global statusline, `laststatus=3`; set AFTER
     the terminal buffer is in the window: window-local options only stick to the
-    buffer they were set with): TERMINAL/NORMAL badge,
-    agent tabs (`viewable()` → cached `viewer.list`, linked first, `●` = linked,
-    refreshed on SwitchyardSessionsChanged / DirChanged), hint on the right.
-  - Cycling: `view.cycle(delta)` with wraparound, `]a`/`[a` in the viewer,
-    public `next_agent`/`prev_agent` (mapped Cmd+] / Cmd+[ in n + t). Never
-    changes the link.
+    buffer they were set with): agent tabs (`viewable()` → cached `viewer.list`,
+    linked first, `●` = linked, refreshed on SwitchyardSessionsChanged /
+    DirChanged); a NORMAL badge only as a warning when the focused viewer is
+    not in terminal mode.
+  - The viewer is only for typing to the agent: no buffer-local keys, no
+    cycling (removed). Choosing which agent to see happens in the yard.
+    `focus_view()` jumps between viewer and editor (stopinsert + previous window).
 - **Badge contrast**: text color = the theme's light or dark color, whichever
   contrasts more with the badge background.
 - **Live reload** (`live_reload = true`): open files follow the agent's edits,

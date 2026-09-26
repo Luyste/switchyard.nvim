@@ -35,16 +35,15 @@ local function tab(name, visible, linked)
 end
 
 -- The viewer's winbar (a bar on top of the window; unlike a local statusline it
--- also works with a global statusline): mode, agent tabs, hint. Runs on every redraw,
--- so it only reads cached values (viewer.list, linked_pid), never files.
+-- also works with a global statusline): agent tabs and a hint. Runs on every
+-- redraw, so it only reads cached values (viewer.list, linked_pid), never files.
+-- Typing to the agent is the normal state; NORMAL only shows as a warning that
+-- keys don't reach the agent.
 function M.winbar()
 	local focused = vim.api.nvim_get_current_win() == viewer.win
-	local terminal = focused and vim.api.nvim_get_mode().mode == "t"
-	local badge = terminal and "%#SwitchyardFilterBadge# TERMINAL %*" or "%#SwitchyardNormalBadge# NORMAL %*"
-	local hint = terminal and "keys go to the agent" or "i type · q hide"
-	if not terminal and #viewer.list > 1 then
-		hint = "]a [a agents · " .. hint
-	end
+	local normal = focused and vim.api.nvim_get_mode().mode ~= "t"
+	local badge = normal and "%#SwitchyardNormalBadge# NORMAL %* " or ""
+	local hint = normal and "i type" or ""
 
 	local linked = require("switchyard.sessions").linked_pid()
 	local tabs, listed = {}, false
@@ -57,7 +56,7 @@ function M.winbar()
 		table.insert(tabs, 1, tab(viewer.name, true, false))
 	end
 
-	return " " .. badge .. " " .. table.concat(tabs) .. "%=%#SwitchyardDim#" .. hint .. " %*"
+	return " " .. badge .. table.concat(tabs) .. "%=%#SwitchyardDim#" .. hint .. " %*"
 end
 
 -- The viewer window on the right: reuse it, or create it
@@ -86,14 +85,7 @@ local function attach(name)
 	pcall(vim.api.nvim_buf_set_name, buf, "switchyard://" .. name)
 	viewer.buf, viewer.name = buf, name
 
-	-- `q` in normal mode hides the viewer; entering it goes straight to typing
-	vim.keymap.set("n", "q", M.hide, { buffer = buf, nowait = true, silent = true })
-	vim.keymap.set("n", "]a", function()
-		M.cycle(1)
-	end, { buffer = buf, silent = true, desc = "switchyard: next agent" })
-	vim.keymap.set("n", "[a", function()
-		M.cycle(-1)
-	end, { buffer = buf, silent = true, desc = "switchyard: previous agent" })
+	-- Entering the viewer goes straight to typing
 	vim.api.nvim_create_autocmd("BufEnter", {
 		buffer = buf,
 		callback = function()
@@ -242,30 +234,6 @@ function M.hide()
 		vim.api.nvim_win_hide(viewer.win)
 		viewer.win = nil
 	end
-end
-
--- Show the next (delta 1) or previous (delta -1) agent, wrapping around.
--- Only changes what the viewer shows, never the link.
-function M.cycle(delta)
-	viewable(function(list)
-		if #list == 0 then
-			return vim.notify("switchyard: no agent here runs in tmux", vim.log.levels.WARN)
-		end
-		local current = 0
-		for i, agent in ipairs(list) do
-			if agent.name == viewer.name and valid_win(viewer.win) then
-				current = i
-			end
-		end
-		local i
-		if current == 0 then
-			i = delta > 0 and 1 or #list -- nothing from this list shown yet
-		else
-			i = (current - 1 + delta) % #list + 1 -- Lua's % is never negative: wraps both ways
-		end
-		show_name(list[i])
-		vim.cmd.redrawstatus()
-	end)
 end
 
 -- Jump between the viewer and the editor, in terminal and normal mode.
