@@ -1,31 +1,41 @@
+-- The yard: one small floating window with two views.
+--   worktrees: the current repo's worktrees, with a summary of their agents
+--   agents:    every running agent, in any repo
+-- Tab switches views; `/` shows a filter line above the list while filtering.
 local ui = require("switchyard.ui")
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("switchyard_yard")
 
+-- The view survives closing: the yard reopens where you left it
+local view = nil
+
 local state = {
-	mode = "filter", -- "filter" or "normal"
-	wins = {}, -- input, list, detail
-	bufs = {},
+	win = nil, -- the list
+	buf = nil,
+	input_win = nil, -- the filter line, only while filtering
+	input_buf = nil,
 	worktrees = nil, -- the last `wt list` result
 	err = nil,
 	rows = {}, -- one entry per list line
-	expanded = {}, -- worktree path -> true
 	filter = "",
-	selected_key = nil, -- keeps the selection on the same row across redraws
+	selected = {}, -- per view: the key of the selected row (path or "pid:<n>")
 	origin = nil, -- the window the yard was opened from
 }
 
 local function keys()
 	return require("switchyard.config").options.keys.yard
 end
+local function sessions()
+	return require("switchyard.sessions")
+end
 local function valid(win)
 	return win ~= nil and vim.api.nvim_win_is_valid(win)
 end
 
 function M.is_open()
-	return valid(state.wins.list)
+	return valid(state.win)
 end
 
 ---------------------------------------------------------------------------
@@ -57,10 +67,6 @@ local function truncate(text, width)
 	return vim.fn.strcharpart(text, 0, math.max(width - 1, 0)) .. "…"
 end
 
-local function pad(text, width)
-	return text .. string.rep(" ", math.max(width - width_of(text), 0))
-end
-
 -- Where the filter matches `text` (case-insensitive), or nil
 local function match(text)
 	if state.filter == "" then
@@ -81,293 +87,170 @@ local function add_matched(b, text, hl)
 end
 
 ---------------------------------------------------------------------------
--- Rows: which worktrees and agents are shown
+-- Rows
 ---------------------------------------------------------------------------
 
 local function agent_name(session)
-	return require("switchyard.sessions").tmux_name(session) or session.adapter.name
+	return sessions().tmux_name(session) or session.adapter.name
 end
 
-local function build_rows()
-	local sessions = require("switchyard.sessions")
-	local all = sessions.all()
-	for _, s in ipairs(all) do
-		sessions.resolve_tmux(s)
-	end
-
+local function worktree_rows(all)
 	local rows = {}
 	for _, wt in ipairs(state.worktrees or {}) do
 		local agents = vim.tbl_filter(function(s)
 			return s.cwd == wt.path
 		end, all)
-		local wt_matches = state.filter == "" or match(wt.branch) ~= nil
-		local matching_agents = vim.tbl_filter(function(s)
-			return state.filter == "" or match(agent_name(s)) ~= nil
-		end, agents)
-
-		if wt_matches or #matching_agents > 0 then
-			-- A worktree shown only because an agent matches opens by itself
-			local open = state.expanded[wt.path] or (not wt_matches and #matching_agents > 0)
-			table.insert(rows, { kind = "worktree", worktree = wt, agents = agents, open = open, key = wt.path })
-			if open then
-				for _, s in ipairs(wt_matches and agents or matching_agents) do
-					table.insert(rows, { kind = "agent", session = s, worktree = wt, key = "pid:" .. s.pid })
-				end
-			end
+		local shown = state.filter == ""
+			or match(wt.branch)
+			or vim.iter(agents):any(function(s)
+				return match(agent_name(s)) ~= nil
+			end)
+		if shown then
+			table.insert(rows, { kind = "worktree", worktree = wt, agents = agents, key = wt.path, path = wt.path })
 		end
 	end
 	return rows
 end
 
-local function worktree_line(row, width, linked_pid)
-	local wt, b = row.worktree, builder()
-	local compact = state.mode == "filter"
-	b.add(" ")
-	b.add(#row.agents > 0 and (row.open and "▾ " or "▸ ") or "  ", "SwitchyardDim")
-	b.add(wt.current and "@ " or "  ", "SwitchyardCurrent")
-
-	local name_width = width - (compact and 40 or 18)
-	local name = truncate(wt.branch, name_width)
-	add_matched(b, name, wt.current and "SwitchyardCurrent" or nil)
-	b.add(string.rep(" ", name_width - width_of(name) + 2))
-	b.add(pad(truncate(wt.symbols, 8), 9), "SwitchyardSymbols")
-
-	if compact and #row.agents > 0 then
-		local linked_here = false
-		for _, s in ipairs(row.agents) do
-			if s.pid == linked_pid then
-				linked_here = true
-			end
+-- All agents: the linked one first, then this repo's, then by folder
+local function agent_rows(all)
+	local branch_of = {}
+	for _, wt in ipairs(state.worktrees or {}) do
+		branch_of[wt.path] = wt.branch
+	end
+	local linked = sessions().linked_pid()
+	table.sort(all, function(a, b)
+		if (a.pid == linked) ~= (b.pid == linked) then
+			return a.pid == linked
 		end
-		local summary = (#row.agents == 1 and "1 agent" or (#row.agents .. " agents"))
-			.. (linked_here and " · linked" or "")
-		b.add(summary, linked_here and "SwitchyardLinked" or "SwitchyardAgent")
+		local here_a, here_b = branch_of[a.cwd] ~= nil, branch_of[b.cwd] ~= nil
+		if here_a ~= here_b then
+			return here_a
+		end
+		if a.cwd ~= b.cwd then
+			return a.cwd < b.cwd
+		end
+		return a.pid < b.pid
+	end)
+	local rows = {}
+	for _, s in ipairs(all) do
+		-- This repo: the branch. Another repo: the folder (holds the repo's name)
+		local where = branch_of[s.cwd] or vim.fn.fnamemodify(s.cwd, ":t")
+		if state.filter == "" or match(agent_name(s)) or match(where) then
+			table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
+		end
 	end
-	return b
+	return rows
 end
 
-local function agent_line(row, linked_pid)
-	local s, b = row.session, builder()
-	local is_linked = s.pid == linked_pid
-	b.add("       ")
-	b.add("● ", is_linked and "SwitchyardLinked" or "SwitchyardAgent")
-	add_matched(b, agent_name(s), nil)
-	if is_linked then
+-- One line: a left part (builder) and an optional right part { text, hl }
+local function number(b, i)
+	b.add(i <= 9 and (" " .. i .. " ") or "   ", "SwitchyardDim")
+end
+
+local function worktree_line(i, row, linked)
+	local wt, b = row.worktree, builder()
+	number(b, i)
+	b.add(wt.current and "@ " or "  ", "SwitchyardCurrent")
+	add_matched(b, wt.branch, wt.current and "SwitchyardCurrent" or nil)
+	if wt.symbols ~= "" then
 		b.add("  ")
-		b.add(" LINKED ", "SwitchyardLinkedBadge")
+		b.add(wt.symbols, "SwitchyardSymbols")
+	end
+	local linked_here = vim.iter(row.agents):any(function(s)
+		return s.pid == linked
+	end)
+	if linked_here then
+		local more = #row.agents > 1 and (" +" .. (#row.agents - 1)) or ""
+		return b, { "● linked" .. more, "SwitchyardLinked" }
+	elseif #row.agents > 0 then
+		return b, { "● " .. #row.agents, "SwitchyardAgent" }
 	end
 	return b
 end
 
+local function agent_line(i, row, linked)
+	local s, b = row.session, builder()
+	local is_linked = s.pid == linked
+	number(b, i)
+	b.add("● ", is_linked and "SwitchyardLinked" or "SwitchyardAgent")
+	add_matched(b, agent_name(s), is_linked and "SwitchyardLinked" or nil)
+	return b, { row.where, "SwitchyardDim" }
+end
+
 ---------------------------------------------------------------------------
--- Writing to buffers
+-- Title, footer, layout
 ---------------------------------------------------------------------------
 
-local function write(buf, builders)
+local function title()
+	local parts = { { " switchyard ", "SwitchyardHeading" } }
+	if view == "worktrees" then
+		table.insert(parts, { "· " .. vim.fn.fnamemodify(vim.fn.getcwd(), ":t") .. " ", "SwitchyardDim" })
+	end
+	table.insert(parts, { "· " .. view .. " ", "SwitchyardDim" })
+	return parts
+end
+
+local function footer(width)
+	local hints = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  q close "
+		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  q close "
+	return { { truncate(hints, width - 2), "SwitchyardDim" } }
+end
+
+local function layout(width, height)
+	local cols, lines = vim.o.columns, vim.o.lines
+	local filtering = valid(state.input_win)
+	-- Centered, a bit above the middle; room for the filter line above it
+	local row = math.max(filtering and 4 or 1, math.floor((lines - height) / 2) - 2)
+	local col = math.floor((cols - width) / 2)
+	vim.api.nvim_win_set_config(state.win, {
+		relative = "editor",
+		row = row,
+		col = col,
+		width = width,
+		height = height,
+		title = title(),
+		title_pos = "left",
+		footer = footer(width),
+		footer_pos = "left",
+	})
+	if filtering then
+		vim.api.nvim_win_set_config(state.input_win, { relative = "editor", row = row - 3, col = col, width = width, height = 1 })
+	end
+end
+
+---------------------------------------------------------------------------
+-- Rendering
+---------------------------------------------------------------------------
+
+local function write(builders)
 	local lines = {}
 	for i, b in ipairs(builders) do
 		lines[i] = b.text
 	end
-	vim.bo[buf].modifiable = true
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-	vim.bo[buf].modifiable = false
-	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+	vim.bo[state.buf].modifiable = true
+	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+	vim.bo[state.buf].modifiable = false
+	vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
 	for i, b in ipairs(builders) do
 		for _, h in ipairs(b.hls) do
-			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, h[1], { end_col = h[2], hl_group = h[3] })
+			vim.api.nvim_buf_set_extmark(state.buf, ns, i - 1, h[1], { end_col = h[2], hl_group = h[3] })
 		end
 	end
 end
-
-local function selected_row()
-	if not M.is_open() then
-		return nil
-	end
-	return state.rows[vim.api.nvim_win_get_cursor(state.wins.list)[1]]
-end
-
----------------------------------------------------------------------------
--- The detail panel (normal mode only)
----------------------------------------------------------------------------
-
-local function render_detail()
-	if state.mode ~= "normal" or not valid(state.wins.detail) then
-		return
-	end
-	local k, out = keys(), {}
-	local function line(parts)
-		local b = builder()
-		for _, p in ipairs(parts) do
-			b.add(p[1], p[2])
-		end
-		table.insert(out, b)
-	end
-	local function actions(list)
-		line({ { " ACTIONS", "SwitchyardLabel" } })
-		for _, a in ipairs(list) do
-			line({ { "   " .. pad(a[1], 7), "SwitchyardKey" }, { a[2], a[3] and "SwitchyardDanger" or nil } })
-		end
-	end
-
-	local row = selected_row()
-	if not row then
-		line({ { " Nothing selected", "SwitchyardDim" } })
-	elseif row.kind == "worktree" then
-		local wt = row.worktree
-		line({ { " WORKTREE", "SwitchyardLabel" } })
-		line({ { " " .. wt.branch, "SwitchyardHeading" } })
-		line({ { " " .. vim.fn.fnamemodify(wt.path, ":~"), "SwitchyardDim" } })
-		line({})
-		line({
-			{ " Status   ", "SwitchyardLabel" },
-			{ wt.symbols ~= "" and wt.symbols or "clean", "SwitchyardSymbols" },
-		})
-		line({ { " Agents   ", "SwitchyardLabel" }, { tostring(#row.agents) } })
-		line({})
-		actions({
-			{ k.activate, "switch editor here" },
-			{ "⇧⏎", "switch, keep agent" },
-			{ k.toggle, "expand / collapse agents" },
-			{ k.new_agent, "new agent here" },
-			{ k.continue_agent, "continue last session here" },
-			{ k.fork_agent, "fork linked agent here" },
-			{ k.new_worktree, "new worktree" },
-			{ k.copy_path, "copy path" },
-			{ k.remove, "remove worktree", true },
-		})
-	else
-		local s = row.session
-		local linked = require("switchyard.sessions").linked()
-		local is_linked = linked and linked.pid == s.pid
-		line({ { " AGENT", "SwitchyardLabel" } })
-		line({ { " " .. agent_name(s), "SwitchyardHeading" } })
-		line({ { " " .. s.adapter.name .. " · in " .. row.worktree.branch, "SwitchyardDim" } })
-		line({})
-		line({
-			{ " Editor   ", "SwitchyardLabel" },
-			is_linked and { "linked", "SwitchyardLinked" } or { "not linked", "SwitchyardDim" },
-		})
-		line({})
-		actions({
-			{ k.activate, "link editor to this agent" },
-			{ "⇧⏎", "go to its worktree, keep agent" },
-			{ k.view, "view in split" },
-			{ k.external, "open in external terminal" },
-			{ k.send, "send a prompt" },
-			{ k.move, "move to another worktree" },
-			{ k.spin_off, "spin off into new worktree" },
-			{ k.rename, "rename session" },
-			{ k.remove, "stop agent", true },
-		})
-	end
-	write(state.bufs.detail, out)
-end
-
----------------------------------------------------------------------------
--- Layout: sizes and positions for the current mode
----------------------------------------------------------------------------
-
-local function title()
-	local repo = vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
-	local badge = state.mode == "normal" and { " NORMAL ", "SwitchyardNormalBadge" }
-		or { " FILTER ", "SwitchyardFilterBadge" }
-	return {
-		{ " switchyard ", "SwitchyardHeading" },
-		{ "· " .. repo .. " ", "SwitchyardDim" },
-		badge,
-		{ " ", "FloatBorder" },
-	}
-end
-
-local function footer()
-	local k = keys()
-	if state.mode == "normal" then
-		return {
-			{
-				(" j/k move  %s expand  ⏎ switch  ⇧⏎ keep agent  %s filter  %s close "):format(k.toggle, k.filter, k.close),
-				"SwitchyardDim",
-			},
-		}
-	end
-	return { { " ⏎ switch  ⇧⏎ keep agent  ^N/^P move  ⇥ expand  esc manage ", "SwitchyardDim" } }
-end
-
-local function layout()
-	if not M.is_open() then
-		return
-	end
-	local cols, lines = vim.o.columns, vim.o.lines
-	local normal = state.mode == "normal"
-
-	local width = normal and math.floor(cols * 0.86) or math.min(100, math.floor(cols * 0.62))
-	local list_height = normal and (math.floor(lines * 0.74) - 3) or math.max(3, math.min(#state.rows, 16))
-	local total = 3 + list_height + 2
-	local top = math.max(1, math.floor((lines - total) / 2) - (normal and 0 or 3))
-	local left = math.floor((cols - width) / 2)
-	local list_width = normal and math.floor(width * 0.5) or width
-
-	vim.api.nvim_win_set_config(state.wins.input, {
-		relative = "editor",
-		row = top,
-		col = left,
-		width = width,
-		height = 1,
-		title = title(),
-		title_pos = "left",
-	})
-	vim.api.nvim_win_set_config(state.wins.list, {
-		relative = "editor",
-		row = top + 3,
-		col = left,
-		width = list_width,
-		height = list_height,
-		footer = footer(),
-		footer_pos = "left",
-	})
-
-	if normal then
-		local detail = {
-			relative = "editor",
-			row = top + 3,
-			col = left + list_width + 2,
-			width = width - list_width - 2,
-			height = list_height,
-			style = "minimal",
-			border = "rounded",
-		}
-		if valid(state.wins.detail) then
-			vim.api.nvim_win_set_config(state.wins.detail, detail)
-		else
-			state.wins.detail = vim.api.nvim_open_win(state.bufs.detail, false, detail)
-		end
-	elseif valid(state.wins.detail) then
-		vim.api.nvim_win_close(state.wins.detail, true)
-		state.wins.detail = nil
-	end
-end
-
----------------------------------------------------------------------------
--- Rendering the list
----------------------------------------------------------------------------
 
 local function update_count()
-	local buf = state.bufs.input
-	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-	vim.api.nvim_buf_set_extmark(
-		buf,
-		ns,
-		0,
-		0,
-		{ virt_text = { { "› ", "SwitchyardKey" } }, virt_text_pos = "inline" }
-	)
-	local shown = 0
-	for _, row in ipairs(state.rows) do
-		if row.kind == "worktree" then
-			shown = shown + 1
-		end
+	if not valid(state.input_win) then
+		return
 	end
-	vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, {
-		virt_text = { { ("%d / %d "):format(shown, #(state.worktrees or {})), "SwitchyardDim" } },
+	local total = view == "worktrees" and #(state.worktrees or {}) or #sessions().all()
+	vim.api.nvim_buf_clear_namespace(state.input_buf, ns, 0, -1)
+	vim.api.nvim_buf_set_extmark(state.input_buf, ns, 0, 0, {
+		virt_text = { { "› ", "SwitchyardKey" } },
+		virt_text_pos = "inline",
+	})
+	vim.api.nvim_buf_set_extmark(state.input_buf, ns, 0, 0, {
+		virt_text = { { ("%d / %d "):format(#state.rows, total), "SwitchyardDim" } },
 		virt_text_pos = "right_align",
 	})
 end
@@ -376,123 +259,224 @@ local function render()
 	if not M.is_open() then
 		return
 	end
-	state.rows = build_rows()
-	layout()
+	local all = sessions().all()
+	for _, s in ipairs(all) do
+		sessions().resolve_tmux(s)
+	end
+	state.rows = view == "agents" and agent_rows(all) or worktree_rows(all)
 
-	local linked = require("switchyard.sessions").linked()
-	local linked_pid = linked and linked.pid
-	local width = vim.api.nvim_win_get_width(state.wins.list)
-	local out = {}
-	for _, row in ipairs(state.rows) do
-		table.insert(
-			out,
-			row.kind == "worktree" and worktree_line(row, width, linked_pid) or agent_line(row, linked_pid)
-		)
+	-- Lines, and the width they need
+	local linked = sessions().linked_pid()
+	local parts, want = {}, 0
+	for i, row in ipairs(state.rows) do
+		local b, right
+		if row.kind == "worktree" then
+			b, right = worktree_line(i, row, linked)
+		else
+			b, right = agent_line(i, row, linked)
+		end
+		parts[i] = { b = b, right = right }
+		want = math.max(want, width_of(b.text) + (right and width_of(right[1]) + 4 or 1))
 	end
-	if #out == 0 then
+	if #parts == 0 then
+		local message = state.worktrees and "No matches" or (state.err or "Loading…")
+		if view == "agents" and state.filter == "" and state.worktrees then
+			message = "No agents running"
+		end
 		local b = builder()
-		b.add(state.worktrees and "  No matches" or ("  " .. (state.err or "Loading…")), "SwitchyardDim")
-		out = { b }
+		b.add("   " .. message, "SwitchyardDim")
+		parts[1] = { b = b }
 	end
-	write(state.bufs.list, out)
+
+	-- As small as possible: sized to the content, within limits
+	local width = math.min(math.max(50, math.min(90, want)), vim.o.columns - 4)
+	local height = math.max(1, math.min(#parts, math.floor(vim.o.lines * 0.6)))
+
+	-- Right parts aligned to the right edge
+	local builders = {}
+	for i, p in ipairs(parts) do
+		if p.right then
+			p.b.add(string.rep(" ", math.max(width - width_of(p.b.text) - width_of(p.right[1]) - 1, 2)))
+			p.b.add(p.right[1], p.right[2])
+		end
+		builders[i] = p.b
+	end
+	write(builders)
+	layout(width, height)
 
 	-- Put the selection back on the same row, if it's still there
 	local target = 1
 	for i, row in ipairs(state.rows) do
-		if row.key == state.selected_key then
+		if row.key == state.selected[view] then
 			target = i
 		end
 	end
-	vim.api.nvim_win_set_cursor(state.wins.list, { target, 0 })
-	state.selected_key = state.rows[target] and state.rows[target].key
-
+	vim.api.nvim_win_set_cursor(state.win, { target, 0 })
+	state.selected[view] = state.rows[target] and state.rows[target].key
 	update_count()
-	render_detail()
 end
 
-M.render = render
+---------------------------------------------------------------------------
+-- Actions
+---------------------------------------------------------------------------
 
----------------------------------------------------------------------------
--- Actions available in part 1
----------------------------------------------------------------------------
+local function selected_index()
+	return vim.api.nvim_win_get_cursor(state.win)[1]
+end
 
 local function move(delta)
 	if #state.rows == 0 then
 		return
 	end
-	local row = vim.api.nvim_win_get_cursor(state.wins.list)[1] + delta
-	row = math.max(1, math.min(#state.rows, row))
-	vim.api.nvim_win_set_cursor(state.wins.list, { row, 0 })
-	state.selected_key = state.rows[row].key
-	render_detail()
+	local index = math.max(1, math.min(#state.rows, selected_index() + delta))
+	vim.api.nvim_win_set_cursor(state.win, { index, 0 })
+	state.selected[view] = state.rows[index].key
 end
 
-local function toggle()
-	local row = selected_row()
-	if not row then
-		return
-	end
-	local path = row.worktree.path
-	if row.kind == "agent" then
-		state.selected_key = path -- collapsing: select the worktree
-	end
-	state.expanded[path] = not state.expanded[path]
-	render()
-end
-
-local function activate()
-	local row = selected_row()
-	if not row then
-		return
-	end
-	if row.kind == "worktree" then
-		M.close()
-		vim.schedule(function()
-			require("switchyard.projects").switch(row.worktree.path)
-		end)
-	else
-		require("switchyard.sessions").link(row.session, true)
-		render()
-	end
-end
-
--- Peek: go to the row's worktree but keep the current link
-local function peek()
-	local row = selected_row()
-	if not row then
-		return
-	end
-	local path = row.worktree.path -- an agent row: its worktree
-	M.close()
+-- Switch the editor but keep the current link
+local function peek(path)
 	if path == vim.fn.getcwd() then
 		return
 	end
 	vim.schedule(function()
-		local sessions = require("switchyard.sessions")
-		sessions.keep_link_for(path)
+		sessions().keep_link_for(path)
 		if not require("switchyard.projects").switch(path) then
-			sessions.keep_link_for(nil) -- blocked (unsaved changes): no arrival follows
+			sessions().keep_link_for(nil) -- blocked (unsaved changes): no arrival follows
 		end
 	end)
 end
 
----------------------------------------------------------------------------
--- Modes
----------------------------------------------------------------------------
-
-local function enter_normal()
-	state.mode = "normal"
-	vim.cmd.stopinsert()
-	render()
-	vim.api.nvim_set_current_win(state.wins.list)
+-- Enter (alt = Shift+Enter) on row `index` (default: the selected one).
+--   worktree: switch (the link moves along) / peek (the link stays)
+--   agent:    go to it (switch to its worktree + link) / link only, stay here
+local function activate(index, alt)
+	local row = state.rows[index or selected_index()]
+	if not row then
+		return
+	end
+	if row.kind == "agent" and alt then
+		sessions().link(row.session)
+		return render()
+	end
+	M.close()
+	if row.kind == "worktree" then
+		if alt then
+			return peek(row.path)
+		end
+		return vim.schedule(function()
+			require("switchyard.projects").switch(row.path)
+		end)
+	end
+	vim.schedule(function()
+		local moved = row.path ~= vim.fn.getcwd()
+		if require("switchyard.projects").switch(row.path) then
+			-- Before the (scheduled) arrival rules run, so they keep this link
+			sessions().link(row.session, moved) -- quiet after a switch: the statusline shows it
+		end
+	end)
 end
 
-local function enter_filter()
-	state.mode = "filter"
+local function toggle_view()
+	view = view == "worktrees" and "agents" or "worktrees"
 	render()
-	vim.api.nvim_set_current_win(state.wins.input)
+end
+
+local function refresh()
+	require("switchyard.worktrunk").list(vim.fn.getcwd(), function(worktrees, err)
+		state.worktrees, state.err = worktrees, err
+		if not state.selected.worktrees then
+			for _, wt in ipairs(worktrees or {}) do
+				if wt.current then
+					state.selected.worktrees = wt.path
+				end
+			end
+		end
+		render()
+	end)
+end
+
+---------------------------------------------------------------------------
+-- Filtering: a line above the list, only while filtering
+---------------------------------------------------------------------------
+
+local function stop_filter()
+	state.filter = ""
+	if valid(state.input_win) then
+		vim.api.nvim_win_close(state.input_win, true)
+	end
+	if state.input_buf and vim.api.nvim_buf_is_valid(state.input_buf) then
+		vim.api.nvim_buf_delete(state.input_buf, { force = true })
+	end
+	state.input_win, state.input_buf = nil, nil
+	vim.cmd.stopinsert()
+	if M.is_open() then
+		vim.api.nvim_set_current_win(state.win)
+		render()
+	end
+end
+
+local function start_filter()
+	if valid(state.input_win) then
+		vim.api.nvim_set_current_win(state.input_win)
+		return vim.cmd("startinsert!")
+	end
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "switchyard"
+	state.input_buf = buf
+	state.input_win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		row = 1,
+		col = 1,
+		width = 50,
+		height = 1,
+		style = "minimal",
+		border = "rounded",
+	})
+
+	local function map(key, fn)
+		vim.keymap.set("i", key, fn, { buffer = buf, nowait = true, silent = true })
+	end
+	local k = keys()
+	map("<CR>", function()
+		vim.cmd.stopinsert()
+		activate()
+	end)
+	map(k.alt_activate, function()
+		vim.cmd.stopinsert()
+		activate(nil, true)
+	end)
+	map("<C-n>", function()
+		move(1)
+	end)
+	map("<C-p>", function()
+		move(-1)
+	end)
+	map("<Down>", function()
+		move(1)
+	end)
+	map("<Up>", function()
+		move(-1)
+	end)
+	map("<Tab>", toggle_view)
+	map("<Esc>", stop_filter)
+	map("<C-c>", stop_filter)
+
+	vim.api.nvim_create_autocmd("TextChangedI", {
+		buffer = buf,
+		callback = function()
+			state.filter = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or ""
+			state.selected[view] = nil -- a new filter selects the first row
+			render()
+		end,
+	})
+	render()
 	vim.cmd("startinsert!")
 end
+
+---------------------------------------------------------------------------
+-- Opening and closing
+---------------------------------------------------------------------------
 
 function M.close()
 	ui.show_cursor()
@@ -500,122 +484,87 @@ function M.close()
 	-- Closed from inside the yard: go back where it was opened. Otherwise Neovim
 	-- picks a window itself (often the file tree). Closed because you went to
 	-- another window: stay there.
-	local inside = vim.tbl_contains(vim.tbl_values(state.wins), vim.api.nvim_get_current_win())
-	for _, win in pairs(state.wins) do
+	local current = vim.api.nvim_get_current_win()
+	local inside = current == state.win or current == state.input_win
+	-- Not ipairs over { input_win, win }: it stops at the first nil
+	for _, win in pairs({ input = state.input_win, list = state.win }) do
 		if valid(win) then
 			pcall(vim.api.nvim_win_close, win, true)
 		end
 	end
-	for _, buf in pairs(state.bufs) do
+	for _, buf in pairs({ input = state.input_buf, list = state.buf }) do
 		if vim.api.nvim_buf_is_valid(buf) then
 			pcall(vim.api.nvim_buf_delete, buf, { force = true })
 		end
 	end
-	state.wins, state.bufs = {}, {}
+	state.win, state.buf, state.input_win, state.input_buf = nil, nil, nil, nil
+	state.filter = ""
 	if inside and valid(state.origin) then
 		vim.api.nvim_set_current_win(state.origin)
 	end
 	vim.cmd.stopinsert()
 end
 
----------------------------------------------------------------------------
--- Opening
----------------------------------------------------------------------------
-
 local function set_keymaps()
 	local k = keys()
-	local function map(buf, modes, key, fn)
-		vim.keymap.set(modes, key, fn, { buffer = buf, nowait = true, silent = true })
+	local function map(key, fn)
+		vim.keymap.set("n", key, fn, { buffer = state.buf, nowait = true, silent = true })
 	end
-
-	-- Input (filter mode): typing edits the filter, these keys drive the list
-	local input = state.bufs.input
-	map(input, "i", "<C-n>", function()
+	map("<C-n>", function()
 		move(1)
 	end)
-	map(input, "i", "<C-p>", function()
+	map("<C-p>", function()
 		move(-1)
 	end)
-	map(input, "i", "<Down>", function()
-		move(1)
+	map(k.activate, function()
+		activate()
 	end)
-	map(input, "i", "<Up>", function()
-		move(-1)
+	map(k.alt_activate, function()
+		activate(nil, true)
 	end)
-	map(input, "i", "<CR>", activate)
-	map(input, "i", k.peek, peek)
-	map(input, "i", "<Tab>", toggle)
-	map(input, { "i", "n" }, "<Esc>", enter_normal)
-	map(input, "i", "<C-c>", M.close)
-
-	-- List (normal mode)
-	local list = state.bufs.list
-	map(list, "n", "<C-n>", function()
-		move(1)
-	end)
-	map(list, "n", "<C-p>", function()
-		move(-1)
-	end)
-	map(list, "n", k.activate, activate)
-	map(list, "n", k.peek, peek)
-	map(list, "n", k.toggle, toggle)
-	map(list, "n", "<Tab>", toggle)
-	map(list, "n", k.filter, enter_filter)
-	map(list, "n", "/", enter_filter)
-	map(list, "n", k.close, M.close)
-	map(list, "n", "<Esc>", M.close)
+	for i = 1, 9 do
+		map(tostring(i), function()
+			activate(i)
+		end)
+	end
+	map(k.toggle_view, toggle_view)
+	map(k.filter, start_filter)
+	map(k.refresh, refresh)
+	map(k.close, M.close)
+	map("<Esc>", M.close)
 end
 
 local function set_autocmds()
 	local group = vim.api.nvim_create_augroup("switchyard_yard", { clear = true })
-	local list, input = state.bufs.list, state.bufs.input
-
-	-- The filter is whatever the input line contains
-	vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
-		group = group,
-		buffer = input,
-		callback = function()
-			state.filter = vim.api.nvim_buf_get_lines(input, 0, 1, false)[1] or ""
-			state.selected_key = nil -- a new filter selects the first row
-			render()
-		end,
-	})
 
 	-- The list only moves up and down; keep the selection in sync
 	vim.api.nvim_create_autocmd("CursorMoved", {
 		group = group,
-		buffer = list,
+		buffer = state.buf,
 		callback = function()
 			local pos = vim.api.nvim_win_get_cursor(0)
 			if pos[2] ~= 0 then
 				vim.api.nvim_win_set_cursor(0, { pos[1], 0 })
 			end
 			local row = state.rows[pos[1]]
-			state.selected_key = row and row.key
-			render_detail()
+			state.selected[view] = row and row.key
 		end,
 	})
 
 	-- No visible cursor while the list has focus
-	vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter" }, { group = group, buffer = list, callback = ui.hide_cursor })
-	vim.api.nvim_create_autocmd({ "WinLeave", "BufLeave" }, { group = group, buffer = list, callback = ui.show_cursor })
+	vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter" }, { group = group, buffer = state.buf, callback = ui.hide_cursor })
+	vim.api.nvim_create_autocmd({ "WinLeave", "BufLeave" }, { group = group, buffer = state.buf, callback = ui.show_cursor })
 
 	-- Leaving for a normal editor window closes the yard (floating windows don't)
 	vim.api.nvim_create_autocmd("WinEnter", {
 		group = group,
 		callback = function()
 			vim.schedule(function()
-				if not M.is_open() then
-					return
-				end
 				local win = vim.api.nvim_get_current_win()
-				for _, w in pairs(state.wins) do
-					if w == win then
-						return
+				if M.is_open() and win ~= state.win and win ~= state.input_win then
+					if vim.api.nvim_win_get_config(win).relative == "" then
+						M.close()
 					end
-				end
-				if vim.api.nvim_win_get_config(win).relative == "" then
-					M.close()
 				end
 			end)
 		end,
@@ -629,43 +578,36 @@ end
 
 function M.open()
 	if M.is_open() then
-		return vim.api.nvim_set_current_win(state.mode == "normal" and state.wins.list or state.wins.input)
+		return vim.api.nvim_set_current_win(state.win)
 	end
-
+	view = view or require("switchyard.config").options.yard.view
 	ui.set_highlights()
 	state.origin = vim.api.nvim_get_current_win()
-	state.mode, state.filter, state.rows = "filter", "", {}
-	state.worktrees, state.err, state.selected_key = nil, nil, nil
+	state.filter, state.rows, state.worktrees, state.err = "", {}, nil, nil
+	-- Start on the linked agent / the current worktree
+	local linked = sessions().linked_pid()
+	state.selected = { agents = linked and ("pid:" .. linked) or nil }
 
-	for _, name in ipairs({ "input", "list", "detail" }) do
-		local buf = vim.api.nvim_create_buf(false, true)
-		vim.bo[buf].bufhidden = "hide"
-		vim.bo[buf].filetype = "switchyard" -- lets statuslines recognise the yard
-		state.bufs[name] = buf
-	end
-
-	local base =
-		{ relative = "editor", row = 1, col = 1, width = 40, height = 1, style = "minimal", border = "rounded" }
-	state.wins.input = vim.api.nvim_open_win(state.bufs.input, true, base)
-	state.wins.list = vim.api.nvim_open_win(state.bufs.list, false, vim.tbl_extend("force", base, { height = 3 }))
-	vim.wo[state.wins.list].cursorline = true
-	vim.wo[state.wins.list].winhighlight = "CursorLine:SwitchyardSelection"
+	state.buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[state.buf].bufhidden = "hide"
+	vim.bo[state.buf].filetype = "switchyard" -- lets statuslines recognise the yard
+	state.win = vim.api.nvim_open_win(state.buf, true, {
+		relative = "editor",
+		row = 1,
+		col = 1,
+		width = 50,
+		height = 1,
+		style = "minimal",
+		border = "rounded",
+	})
+	vim.wo[state.win].cursorline = true
+	vim.wo[state.win].winhighlight = "CursorLine:SwitchyardSelection"
 
 	set_keymaps()
 	set_autocmds()
+	ui.hide_cursor() -- the WinEnter autocmd came too late for this first entry
 	render()
-	vim.cmd("startinsert")
-
-	require("switchyard.worktrunk").list(vim.fn.getcwd(), function(worktrees, err)
-		state.worktrees, state.err = worktrees, err
-		for _, wt in ipairs(worktrees or {}) do
-			if wt.current then
-				state.expanded[wt.path] = true -- the current worktree starts expanded
-				state.selected_key = wt.path -- and selected
-			end
-		end
-		render()
-	end)
+	refresh()
 end
 
 return M

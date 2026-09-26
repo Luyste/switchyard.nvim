@@ -172,7 +172,7 @@ lua/switchyard/
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload + follow edits; arrival: arrival rules + peek;
-                             launch: linking after a start)
+                             launch: linking after a start; yard: open/close)
 ```
 
 ## Status
@@ -186,20 +186,22 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   of the pane shell).
 - Linking, arrival rules, following (move-only), tmux names in statusline.
 - Launching agents in tmux (new/continue/fork) from `start_agent`.
-- **Yard part 1**: two modes.
-  - Filter mode (opens here): 3 floats (input line with inline `›` virt text and
-    `n / m` count, list, detail only in normal mode). Typing filters
-    (substring, case-insensitive, match highlighted; worktree shown if branch or
-    any agent matches, auto-expanded when only an agent matches). Ctrl-N/P move,
-    Enter switches worktree / links agent, Tab expands, Esc → normal mode.
-  - Normal mode: wide two-pane layout (tree left, detail panel right, detail
-    lists actions + keys from `config.keys.yard`). j/k and Ctrl-N/P move freely,
-    `o`/Tab expand, Enter, `i`/`/` back to filter, `q`/Esc close.
-  - Full-row selection (cursorline → `SwitchyardSelection` = PmenuSel), cursor
-    hidden and locked to column 0, title/footer in borders with mode badge,
-    selection kept across redraws by row key (path or `pid:<n>`), closes when
-    focus goes to a normal (non-floating) window, redraws on
-    `SwitchyardSessionsChanged` / `VimResized`.
+- **Compact yard** (replaced part 1): one float sized to its content (width
+  50..90, height ≤ 60% of lines), centered, opens in normal mode. Two views,
+  Tab toggles, remembered while Neovim runs (`yard.view` = first view):
+  - worktrees (current repo): number, `@`, branch, wt symbols, agents on the
+    right (`● linked +n` / `● n`);
+  - agents (all repos, from `sessions.all()`): number, `●` + tmux name, branch
+    (this repo) or folder name (other repos) on the right; linked first, then
+    this repo's, then by folder.
+  - Keys (`keys.yard`): Enter (worktree: switch · agent: go to = switch + link),
+    Shift+Enter (worktree: peek · agent: link only, yard stays), `1`–`9` = Enter
+    on row n, j/k and Ctrl-N/P, Tab, `/` filter (a 1-line float above the list
+    only while filtering; Enter acts, Esc clears and removes it), Ctrl-R
+    refresh, `q`/Esc close. Footer hints per view.
+  - Kept: highlights, selection per view by row key, cursor hidden + column
+    locked, closes when focus goes to a normal window, returns to the origin
+    window, redraws on SwitchyardSessionsChanged / VimResized.
 - **Viewer**: Cmd+J toggles a right split (`botright vsplit`, width
   `config.viewer.width`) with a terminal running `tmux attach -t =name`; reused
   window; hidden buffer kept; BufEnter → startinsert; TermClose →
@@ -242,37 +244,14 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 ### Open (small)
 
 - `config.setup` has no unknown-option warning yet.
-- `keys.yard` will be redefined by the two-view yard (see the key table in the
-  yard part 2 step); add `yard.view = "worktrees"`.
 
 ### Next steps (in this order)
 
-1. **Compact yard refactor, two views** (do BEFORE yard part 2; replaces
-   part 1's layout):
-   - ONE floating window, sized to content: width = longest row, clamped
-     ~50..90 cols; height = number of rows, capped (~60% of lines). Centered.
-     Title `switchyard · <repo> · worktrees` / `switchyard · agents` in the top
-     border, key hints in the bottom border.
-   - **Two views, Tab toggles**, remembered for the next open (`yard.view`
-     default "worktrees"):
-     - **Worktrees view** (current repo): one row per worktree, number, `@`,
-       branch, status symbols, agent summary on the right (`● linked`, `● 2`).
-       **No expand/collapse** (agents are managed in the agents view).
-     - **Agents view** (all repos): flat list of agent sessions: number, tmux
-       name, worktree/branch (+ repo when not the current one), state; sorted
-       waiting → working → idle (state from pi-worktrunk markers; until then,
-       sort linked first, then by worktree). Replaces "agents elsewhere".
-   - Opens in **normal mode** with the current worktree / linked agent selected.
-     `j`/`k` (and Ctrl-N/P) move, `1`–`9` act as Enter on the Nth row, `q`/Esc close.
-   - Footer hints adapt to the view, most-used keys only, truncated to width.
-     `?` = overlay with all keys. `.` = action menu for the row (menu.lua).
-   - `/` = filter: a 1-line input float appears attached above the yard only
-     while filtering; typing narrows the list; Enter acts; Esc clears the filter
-     and removes the input line. Filtering is a temporary state, not a mode.
-   - Keep: row building, highlights, selection-by-key, auto-close on focus loss,
-     SwitchyardSessionsChanged redraws. Remove: the filter/normal layouts, the
-     detail window, the mode badge, expand/collapse.
-   - Iterate on size in real use; aim for "as small as possible".
+1. **Yard: `?` overlay and `.` action menu** (rest of the compact yard): `?`
+   = overlay with all keys of the current view; `.` = menu.lua with the row's
+   actions and their keys. Agent state (waiting / working / idle from
+   pi-worktrunk markers) and its sort order come later. Iterate on size in real
+   use; aim for "as small as possible".
 2. **Yard part 2 — actions per view** (row under cursor is the subject;
    destructive actions confirm; every key configurable in `keys.yard`):
    | Key                             | Worktrees view                           | Agents view                                                                           |
@@ -386,5 +365,7 @@ it). Worktree rows may still show the diff size vs the default branch later
 - A pending redraw (e.g. the yard closing, insert mode ending) wipes a message
   shown right before it: `redraw` before `vim.notify` in switch paths.
 - `:only` also closes the viewer: whoever switches must bring it back.
+- `ipairs({ a, b })` stops at the first nil: iterate optional values with
+  `pairs` over named keys (the yard's close left its window open this way).
 - `follow()` must react to a _move_ of the linked agent (compare with the cached
   cwd), not to "agent is elsewhere", or it hijacks the editor after "keep link".

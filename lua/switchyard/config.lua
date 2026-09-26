@@ -7,6 +7,9 @@ M.defaults = {
 	empty_worktree = "keep",
 	terminal = "auto",
 	live_reload = true, -- open files follow changes made by agents
+	yard = {
+		view = "worktrees", -- the view the yard opens in first: "worktrees" or "agents"
+	},
 	viewer = {
 		width = 0.45, -- share of the editor's width for the viewer split
 	},
@@ -15,25 +18,14 @@ M.defaults = {
 			new_worktree = "alt-n",
 			remove_worktree = "alt-d",
 		},
+		-- Inside the yard (buffer-local). More arrive with the yard's actions.
 		yard = {
-			activate = "<CR>",
-			peek = "<S-CR>",
-			toggle = "o",
-			filter = "i",
-			close = "q",
+			activate = "<CR>", -- worktrees: switch · agents: go to (switch + link)
+			alt_activate = "<S-CR>", -- worktrees: peek (keep link) · agents: link only
+			toggle_view = "<Tab>",
+			filter = "/",
 			refresh = "<C-r>",
-			new_worktree = "%",
-			remove = "D",
-			new_agent = "n",
-			continue_agent = "c",
-			fork_agent = "f",
-			copy_path = "y",
-			view = "v",
-			external = "g",
-			send = "s",
-			move = "m",
-			spin_off = "F",
-			rename = "r",
+			close = "q",
 		},
 	},
 }
