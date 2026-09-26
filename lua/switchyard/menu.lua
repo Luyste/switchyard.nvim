@@ -50,28 +50,27 @@ function M.open(opts)
 	local col = math.floor((vim.o.columns - width) / 2)
 	local anchor = vim.api.nvim_win_get_config(from)
 	if anchor.relative ~= "" then
+		local height = #items + 2 -- + title and hints lines
 		local below = anchor.row + anchor.height + 2
-		if below + #items + 2 <= vim.o.lines - 2 then
+		if below + height + 2 <= vim.o.lines - 2 then
 			row = below
-		elseif anchor.row - #items - 2 >= 0 then
-			row = anchor.row - #items - 2
+		elseif anchor.row - height - 2 >= 0 then
+			row = anchor.row - height - 2
 		end
 		col = anchor.col
 	end
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		width = width,
-		height = #items,
+		height = #items + 2, -- + the title line and the hints line
 		row = row,
 		col = col,
 		style = "minimal",
 		border = "rounded",
 		zindex = 100, -- above the yard (50): same-level floats overlap badly in Neovide
-		title = { { " switchyard ", "SwitchyardHeading" }, { "· " .. opts.title .. " ", "SwitchyardDim" } },
-		title_pos = "left",
-		footer = { { " ⏎ choose  ^N/^P move  1-9 pick  esc cancel ", "SwitchyardDim" } },
-		footer_pos = "left",
 	})
+	ui.title(win, { { " switchyard ", "SwitchyardHeading" }, { "· " .. opts.title, "SwitchyardDim" } })
+	ui.hints(buf, " ⏎ choose  ^N/^P move  1-9 pick  esc cancel")
 	vim.wo[win].cursorline = true
 	vim.wo[win].winhighlight = "CursorLine:SwitchyardSelection"
 	ui.hide_cursor()

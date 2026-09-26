@@ -194,10 +194,10 @@ local function title()
 	return parts
 end
 
-local function footer(width)
-	local hints = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . actions  ? keys "
-		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  . actions  ? keys "
-	return { { truncate(hints, width - 2), "SwitchyardDim" } }
+local function hints(width)
+	local text = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . actions  ? keys"
+		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  . actions  ? keys"
+	return truncate(text, width - 1)
 end
 
 local function layout(width, height)
@@ -211,12 +211,10 @@ local function layout(width, height)
 		row = row,
 		col = col,
 		width = width,
-		height = height,
-		title = title(),
-		title_pos = "left",
-		footer = footer(width),
-		footer_pos = "left",
+		height = height + 2, -- + the title line and the hints line
 	})
+	ui.title(state.win, title())
+	ui.hints(state.buf, hints(width))
 	if filtering then
 		vim.api.nvim_win_set_config(state.input_win, { relative = "editor", row = row - 3, col = col, width = width, height = 1 })
 	end

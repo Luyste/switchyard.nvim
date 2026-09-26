@@ -97,6 +97,10 @@ anything, then **inspect the actual code**: some items below are marked
   follow the `terminal` pattern: `"auto" | <name> | function(...)`.
 - **One project per yard.** The yard shows the current repo's worktrees and
   agents; for another repo you step out (no project switching in the plugin).
+- **Window style:** titles and key hints never go in the border (Neovide
+  draws them over the border line). Title = the float's winbar
+  (`ui.title(win, chunks)`), hints = a virtual line below the last line
+  (`ui.hints(buf, text)`); both add a line to the window's height.
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.
@@ -311,7 +315,15 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    Ctrl-J new line, Esc = normal mode, q/Esc in normal = close, Ctrl-X clear;
    draft = one hidden buffer that survives closing; the window **disappears on
    focus loss**, my statusline shows DRAFT via `draft_status()`; Cmd+L opens).
-   Order from here: (2) contexts, (3) targets + `s` + hand-over, (4) dispatch
+   Part 2 done: contexts (Visual Cmd+L via `prompt()` in visual mode, Cmd+Shift+L
+   `prompt_line()` = line + diagnostics; snapshot of the lines at add time; a
+   non-focusable list above the input, one line per context; ranges highlighted
+   (Visual) while open; Ctrl-F = the file it was opened from, as a path
+   (`File: <path>`, the agent reads it); Ctrl-D = menu to remove one, Ctrl-X clears all; sent as
+   `From <path>:<a>-<b>:` + fenced code (+ `- SEVERITY: message`), paths
+   relative to the target's folder when inside it, else absolute). DRAFT n in
+   the statusline. The builder stays open when a switchyard menu takes focus.
+   Order from here: (3) targets + `s` + hand-over, (4) dispatch
    as the "new worktree" target (`N`, `dispatch()`). Original design notes:
    (compact, chat-style; NOT via the yard). Inspired by
     pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in

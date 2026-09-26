@@ -30,9 +30,21 @@ function M.following_edits()
 	return package.loaded["switchyard.live"] ~= nil and require("switchyard.live").following_edits()
 end
 
--- The prompt builder: write a prompt for the linked agent (the draft is kept)
+-- The prompt builder: write a prompt for the linked agent (the draft is kept).
+-- In visual mode the selected lines are added as context first.
 function M.prompt()
-	require("switchyard.prompt").open()
+	local prompt = require("switchyard.prompt")
+	if vim.fn.mode():match("^[vV\22]") then
+		prompt.add_selection()
+	end
+	prompt.open()
+end
+
+-- Add the current line and its diagnostics to the prompt, and open it
+function M.prompt_line()
+	local prompt = require("switchyard.prompt")
+	prompt.add_line()
+	prompt.open()
 end
 
 -- For statuslines: "DRAFT" while a prompt draft waits. Cheap, no I/O.
