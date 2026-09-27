@@ -78,6 +78,19 @@ function M.paste(name, text, callback)
 	end)
 end
 
+-- Paste `text` and press Enter: send a prompt to an agent that has no other
+-- way in. callback(ok, error_message)
+function M.submit(name, text, callback)
+	M.paste(name, text, function(ok, err)
+		if not ok then
+			return callback(false, err)
+		end
+		tmux({ "send-keys", "-t", target(name) .. ":", "Enter" }, function(sent, _, stderr)
+			callback(sent, not sent and vim.trim(stderr) or nil)
+		end)
+	end)
+end
+
 -- Rename a session: callback(ok, error_message)
 function M.rename(name, new_name, callback)
 	tmux({ "rename-session", "-t", target(name), new_name }, function(ok, _, stderr)

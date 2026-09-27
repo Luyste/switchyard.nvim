@@ -1,7 +1,7 @@
 local M = {}
 
 M.defaults = {
-	agents = { "pi" }, -- agent adapters (lua/switchyard/adapters/<name>.lua)
+	agents = { "pi", "claude" }, -- agent adapters (lua/switchyard/adapters/<name>.lua), when installed
 	follow = true,
 	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
 	terminal = "auto",

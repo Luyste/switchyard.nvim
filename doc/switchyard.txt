@@ -63,10 +63,16 @@ The link ~
     brew install worktrunk && wt config shell install
 <
 - tmux. Agents run in tmux sessions.
-- An agent. Today that is pi (https://pi.dev) with the pi-nvim extension,
-  which lets switchyard find running sessions and send them prompts: >sh
+- An agent, one or both:
+  - pi (https://pi.dev) with the pi-nvim extension, which lets switchyard
+    find running sessions and send them prompts: >sh
     pi install npm:pi-nvim
-<  Claude Code support is planned.
+<  - Claude Code: nothing extra. Its sessions register themselves in
+    ~/.claude/sessions and switchyard types prompts in through tmux. The
+    first time Claude Code runs in a folder (every new worktree is one) it
+    asks whether you trust it: open it with `v` in the yard and answer.
+  Showing agents in the viewer and sending them prompts works for agents
+  that run in tmux (the ones switchyard starts).
 
 No other Neovim plugins are needed. Run `:checkhealth switchyard` to see what
 is found (|switchyard-health|).
@@ -424,7 +430,7 @@ draft_status()
 
 Pass options to |switchyard.setup()|. The defaults: >lua
     require("switchyard").setup({
-      agents = { "pi" },
+      agents = { "pi", "claude" },
       follow = true,
       empty_worktree = "keep",
       terminal = "auto",
@@ -451,9 +457,9 @@ Tables are merged with the defaults; lists (`agents`) are replaced.
 
                                                     *switchyard-config-agents*
 agents ~
-    Default: `{ "pi" }`
-    The agent adapters to use, when installed. pi is the only adapter so
-    far; Claude Code support is planned.
+    Default: `{ "pi", "claude" }`
+    The agent adapters to use, when installed: "pi" (pi with pi-nvim) and
+    "claude" (Claude Code).
 
                                                     *switchyard-config-follow*
 follow ~

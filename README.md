@@ -55,10 +55,19 @@ together:
   `brew install worktrunk && wt config shell install`
 - **tmux**: agents run in tmux sessions, so switchyard can show them in a
   split and they keep running when Neovim closes
-- **An agent**: today that's [pi](https://pi.dev) with the
-  [pi-nvim](https://github.com/carderne/pi-nvim) extension
-  (`pi install npm:pi-nvim`), which lets switchyard find running sessions and
-  send them prompts. Claude Code support is planned.
+- **An agent**, one or both:
+  - [pi](https://pi.dev) with the
+    [pi-nvim](https://github.com/carderne/pi-nvim) extension
+    (`pi install npm:pi-nvim`), which lets switchyard find running sessions
+    and send them prompts;
+  - [Claude Code](https://claude.com/claude-code), nothing extra: its
+    sessions register themselves, and switchyard types prompts in through
+    tmux. The first time Claude Code runs in a folder (every new worktree is
+    one) it asks whether you trust it; open it with `v` in the yard and
+    answer.
+
+  Agents are found wherever they run, but showing them in the viewer and
+  sending them prompts works for agents in tmux (the ones switchyard starts).
 
 No other Neovim plugins are needed. Run `:checkhealth switchyard` to see
 what's found.
@@ -241,7 +250,7 @@ The defaults:
 
 ```lua
 require("switchyard").setup({
-  agents = { "pi" },           -- agent adapters to use, when installed
+  agents = { "pi", "claude" }, -- agent adapters to use, when installed
   follow = true,               -- follow the linked agent to other worktrees
   empty_worktree = "keep",     -- arriving where no agent runs: "keep" | "unlink" the link
   terminal = "auto",           -- external terminal: "auto" | "ghostty" | "kitty" | "wezterm"
@@ -287,8 +296,8 @@ require("switchyard").setup({
 
 ## Status
 
-switchyard is young and used daily with pi. Planned: Claude Code support,
-showing whether an agent is working or waiting for you, and choosing the base
+switchyard is young and used daily with pi and Claude Code. Planned: showing
+whether an agent is working or waiting for you, and choosing the base
 branch for dispatch.
 
 ## Development

@@ -140,6 +140,12 @@ lua/switchyard/
                              sessions_for_pids (walks the process tree up to a pane),
                              session_of_pid, attach_cmd. Targets use "=name".
   adapters/init.lua          active(): adapters from opts.agents that are tables and installed
+  adapters/claude.lua        Claude Code: sessions() from ~/.claude/sessions/<pid>.json
+                             (kind "interactive", alive pid; cwd, sessionId, startedAt ms,
+                             status busy/idle); new/continue/task_cmd; fork_cmd =
+                             `claude --resume <id> --fork-session` (works across folders);
+                             send = tmux.submit (paste + Enter). A new folder asks the
+                             trust question before it registers (hint on timeout).
   adapters/pi.lua            name/cmd/hint/watch_dir, new_cmd, continue_cmd,
                              fork_cmd(session) (pi --fork <latest session file in
                              ~/.pi/agent/sessions/--<path>--/>), sessions() (from
@@ -367,8 +373,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Fork note (currently a separate first message from launch.fork) could move
   in front of the first real prompt.
 
-4. Claude Code adapter: external sessions via claudecode.nvim (IDE protocol);
-    hand-over already works for any agent in tmux.
+4. Claude Code adapter — done on branch feature/claude-adapter (adapters/claude.lua,
+   no claudecode.nvim needed). Next: agent state (busy/idle is in Claude's registry)
+   in the yard.
 5. README, docs, fuzzy matching, polish.
 
 Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
