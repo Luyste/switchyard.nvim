@@ -36,10 +36,24 @@ function M.with_adapter(callback)
 	})
 end
 
--- Ask for a branch name and create a worktree for it (the editor stays put).
+-- How to show a worktree's changes: a function(worktree), or nil when there's
+-- no way (then `d` isn't offered). See the `diff` option.
+function M.diff_viewer()
+	local choice = require("switchyard.config").options.diff
+	if type(choice) == "function" then
+		return choice
+	end
+	local codediff = require("switchyard.integrations.codediff")
+	if (choice == "auto" or choice == "codediff") and codediff.available() then
+		return codediff.open
+	end
+end
+
+-- Ask for a branch name and make a worktree for it: an existing branch is
+-- checked out there, a new name becomes a new branch (the editor stays put).
 -- on_done(path, branch)
 function M.create_worktree(cwd, on_done)
-	require("switchyard.menu").input({ title = "new worktree: branch name" }, function(branch)
+	require("switchyard.menu").input({ title = "worktree for a branch (new or existing)" }, function(branch)
 		if not branch or branch == "" then
 			return
 		end
@@ -48,7 +62,7 @@ function M.create_worktree(cwd, on_done)
 			if not path then
 				return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
 			end
-			vim.notify("switchyard: created " .. branch)
+			vim.notify("switchyard: worktree for " .. branch)
 			if on_done then
 				on_done(path, branch)
 			end

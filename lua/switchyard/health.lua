@@ -37,6 +37,21 @@ function M.check()
 	end
 
 
+	vim.health.start("switchyard: integrations")
+	local choice = opts.diff
+	if type(choice) == "function" then
+		vim.health.ok("diff (d in the yard): your own function")
+	elseif require("switchyard.actions").diff_viewer() then
+		vim.health.ok("diff (d in the yard): codediff.nvim")
+	elseif choice == false then
+		vim.health.info("diff (d in the yard): turned off")
+	else
+		vim.health.info(
+			"diff (d in the yard): not available",
+			"Install codediff.nvim (https://github.com/esmuellert/codediff.nvim), or set `diff` to a function"
+		)
+	end
+
 	vim.health.start("switchyard: agents")
 	for _, name in ipairs(opts.agents) do
 		local ok, adapter = pcall(require, "switchyard.adapters." .. name)

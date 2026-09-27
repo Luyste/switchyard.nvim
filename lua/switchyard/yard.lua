@@ -526,7 +526,8 @@ local function with_worktree(title, except, callback)
 end
 
 -- Per view: { key = name in keys.yard, label, run = function(row), danger?,
--- any_row? (also works on an empty list; row is nil then) }
+-- any_row? (also works on an empty list; row is nil then), available?
+-- (a function: false hides the action, e.g. no diff viewer installed) }
 local actions = {
 	worktrees = {
 		{
@@ -543,7 +544,7 @@ local actions = {
 		},
 		{
 			key = "new",
-			label = "new worktree",
+			label = "new worktree (new or existing branch)",
 			any_row = true,
 			run = function()
 				require("switchyard.actions").create_worktree(vim.fn.getcwd(), refresh)
@@ -590,6 +591,21 @@ local actions = {
 			end,
 		},
 		{
+			key = "diff",
+			label = "changes against the default branch",
+			available = function()
+				return require("switchyard.actions").diff_viewer() ~= nil
+			end,
+			run = function(row)
+				local base = (state.worktrees or {}).default_branch or "main"
+				local branch = row.worktree and row.worktree.branch or row.where
+				M.close()
+				vim.schedule(function()
+					require("switchyard.actions").diff_viewer()({ path = row.path, branch = branch, base = base })
+				end)
+			end,
+		},
+		{
 			key = "copy_path",
 			label = "copy path",
 			run = function(row)
@@ -618,6 +634,21 @@ local actions = {
 			label = "link only, stay here",
 			run = function(row)
 				activate(row, true) -- Shift+Enter
+			end,
+		},
+		{
+			key = "diff",
+			label = "changes in its worktree against the default branch",
+			available = function()
+				return require("switchyard.actions").diff_viewer() ~= nil
+			end,
+			run = function(row)
+				local base = (state.worktrees or {}).default_branch or "main"
+				local branch = row.worktree and row.worktree.branch or row.where
+				M.close()
+				vim.schedule(function()
+					require("switchyard.actions").diff_viewer()({ path = row.path, branch = branch, base = base })
+				end)
 			end,
 		},
 		{
@@ -712,7 +743,7 @@ local actions = {
 local function run(name)
 	local row = state.rows[selected_index()]
 	for _, action in ipairs(actions[view]) do
-		if action.key == name and (row or action.any_row) then
+		if action.key == name and (row or action.any_row) and (not action.available or action.available()) then
 			return action.run(row)
 		end
 	end
@@ -730,7 +761,7 @@ local function open_menu(all_keys)
 	local row = state.rows[selected_index()]
 	local items = {}
 	for _, action in ipairs(actions[view]) do
-		if row or action.any_row then
+		if (row or action.any_row) and (not action.available or action.available()) then
 			table.insert(items, {
 				label = action.label,
 				key = key_label(action.key),

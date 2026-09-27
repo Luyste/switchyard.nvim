@@ -104,6 +104,12 @@ anything, then **inspect the actual code**: some items below are marked
   `menu.input` (a small float below the yard when opened from it; ⏎ confirm,
   Esc cancels, clicking elsewhere cancels). Never `vim.ui.select` /
   `vim.ui.input` (those end up at the bottom of the screen).
+- **Diffs** come from an optional plugin, not from switchyard: `d` in the yard
+  calls `actions.diff_viewer()` (config `diff`: "auto" | "codediff" | false |
+  function(worktree)); `integrations/codediff.lua` runs
+  `:CodeDiff --repo <worktree> <default_branch>` (default branch from
+  `wt list`, kept as `worktrees.default_branch`). Actions can have
+  `available()`; unavailable ones are hidden from keys and menus.
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.

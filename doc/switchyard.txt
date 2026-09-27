@@ -161,7 +161,8 @@ Key         Worktrees view                Agents view ~
  (alt_activate) current link
 <Tab>       agents view                   worktrees view
  (toggle_view)
-n (new)     new worktree                  new agent in a worktree
+n (new)     worktree for a branch         new agent in a worktree
+            (new or existing)
 N           dispatch a task               dispatch a task
  (dispatch)
 D (remove)  remove the worktree (choose   stop the agent
@@ -174,6 +175,9 @@ c           continue the last session
  (continue_agent) here
 y           copy the path
  (copy_path)
+d (diff)    its changes against the       the changes in its worktree
+            default branch
+            (|switchyard-config-diff|)
 v (view)                                  show it in the viewer split
 g                                         open it in an external terminal
  (external)
@@ -429,6 +433,7 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       empty_worktree = "keep",
       terminal = "auto",
       live_reload = true,
+      diff = "auto",
       yard = {
         view = "worktrees",
       },
@@ -442,6 +447,7 @@ Pass options to |switchyard.setup()|. The defaults: >lua
           close = "q", actions = ".", help = "?",
           new = "n", remove = "D", fork = "f", dispatch = "N",
           start_agent = "a", continue_agent = "c", copy_path = "y",
+          diff = "d",
           view = "v", external = "g", rename = "r", send = "s",
         },
       },
@@ -486,6 +492,16 @@ terminal ~
 live_reload ~
     Default: `true`
     Reload open files when agents change them (|switchyard-live-reload|).
+
+                                                      *switchyard-config-diff*
+diff ~
+    Default: `"auto"`
+    How `d` in the yard shows a worktree's changes against the repository's
+    default branch, including uncommitted work. The editor doesn't switch.
+      "auto"      codediff.nvim when installed, else `d` isn't offered
+      "codediff"  codediff.nvim: `:CodeDiff --repo <worktree> <base>`
+      false       off
+      function    called with `{ path, branch, base }`; open any diff view
 
                                                  *switchyard-config-yard.view*
 yard.view ~

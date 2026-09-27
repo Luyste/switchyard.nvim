@@ -27,7 +27,9 @@ function M.list(cwd, callback)
 			return callback(nil, "couldn't read wt output")
 		end
 
-		local worktrees = {}
+		-- The list, plus the repo's default branch as a field (for diffs)
+		local repo = type(data.repo) == "table" and data.repo or {}
+		local worktrees = { default_branch = type(repo.default_branch) == "string" and repo.default_branch or nil }
 		for _, item in ipairs(data.items or {}) do
 			-- Skip branches without a worktree, and detached worktrees without a branch
 			if type(item.worktree) == "table" and type(item.branch) == "string" then
@@ -38,10 +40,9 @@ function M.list(cwd, callback)
 	end)
 end
 
--- Create a branch and worktree with `wt switch --create`.
--- callback(path) on success, callback(nil, error_message) on failure.
-function M.create(cwd, branch, callback)
-	local cmd = { "wt", "switch", "--create", branch, "--no-cd", "--yes" }
+-- Run `wt switch …` and find the worktree it made: callback(path) or
+-- callback(nil, error_message)
+local function switch(cmd, cwd, branch, callback)
 	util.run(cmd, { cwd = cwd }, function(ok, _, stderr)
 		if not ok then
 			return callback(nil, vim.trim(stderr))
@@ -58,6 +59,20 @@ function M.create(cwd, branch, callback)
 			end
 			callback(nil, "created " .. branch .. ", but couldn't find its worktree")
 		end)
+	end)
+end
+
+-- A worktree for `branch` with `wt switch`: an existing branch (local, or only
+-- on a remote) gets a worktree; a new name is created first (`--create`).
+-- callback(path) on success, callback(nil, error_message) on failure.
+function M.create(cwd, branch, callback)
+	local refs = { "git", "for-each-ref", "--format=%(refname)", "refs/heads/" .. branch, "refs/remotes/*/" .. branch }
+	util.run(refs, { cwd = cwd }, function(_, found)
+		local cmd = { "wt", "switch", branch, "--no-cd", "--yes" }
+		if vim.trim(found) == "" then
+			table.insert(cmd, 3, "--create")
+		end
+		switch(cmd, cwd, branch, callback)
 	end)
 end
 

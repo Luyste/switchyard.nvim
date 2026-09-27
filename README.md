@@ -127,12 +127,13 @@ worktree (or the linked agent in the agents view) in normal mode.
 | `Enter`, `1`–`9` | switch the editor there | go to: switch to its worktree and link it |
 | `Shift+Enter` | peek: switch, keep the current link | link it, stay where you are |
 | `Tab` | agents view | worktrees view |
-| `n` | new worktree | new agent in a worktree |
+| `n` | worktree for a branch (new, or an existing one) | new agent in a worktree |
 | `N` | dispatch a task | dispatch a task |
 | `D` | remove worktree (choose: keep or stop its agents) | stop the agent |
 | `f` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree |
 | `a` / `c` | start a new agent / continue the last session here | |
 | `y` | copy the path | |
+| `d` | its changes against the default branch (needs a diff viewer, see `diff`) | the changes in its worktree |
 | `v` / `g` | | show it in the split / in an external terminal |
 | `s` | | write a prompt for this agent |
 | `r` | | rename its tmux session |
@@ -211,6 +212,15 @@ from the first line, creates the worktree, and starts an agent there with
 your text as its first message. Your editor and your link stay where they
 are; the new agent shows up in the yard.
 
+### Checking an agent's changes
+
+`d` on a worktree (or an agent) in the yard shows that worktree's changes
+against the repo's default branch, including what the agent hasn't committed
+yet, without switching your editor there. It uses
+[codediff.nvim](https://github.com/esmuellert/codediff.nvim) when installed
+(`:CodeDiff --repo <worktree> <default branch>`); with another diff plugin,
+set `diff` to a function that opens it. Without either, `d` isn't offered.
+
 ### Live reload and following edits
 
 ![Following edits: the file the agent changes opens on the changed line](demo/media/follow.gif)
@@ -247,6 +257,8 @@ require("switchyard").setup({
   terminal = "auto",           -- external terminal: "auto" | "ghostty" | "kitty" | "wezterm"
                                --   | "alacritty" | "terminal.app" | function(cmd) return argv end
   live_reload = true,          -- reload open files when agents change them
+  diff = "auto",               -- d in the yard: "auto" (codediff.nvim when installed) | "codediff"
+                               --   | false | function(worktree) with worktree = { path, branch, base }
   yard = {
     view = "worktrees",        -- the view the yard opens in: "worktrees" | "agents"
   },
@@ -258,7 +270,7 @@ require("switchyard").setup({
       activate = "<CR>", alt_activate = "<S-CR>", toggle_view = "<Tab>",
       filter = "/", refresh = "<C-r>", close = "q", actions = ".", help = "?",
       new = "n", remove = "D", fork = "f", dispatch = "N",
-      start_agent = "a", continue_agent = "c", copy_path = "y",
+      start_agent = "a", continue_agent = "c", copy_path = "y", diff = "d",
       view = "v", external = "g", rename = "r", send = "s",
     },
   },

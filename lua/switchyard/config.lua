@@ -6,6 +6,10 @@ M.defaults = {
 	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
 	terminal = "auto",
 	live_reload = true, -- open files follow changes made by agents
+	-- d in the yard: a worktree's changes against the default branch.
+	-- "auto" (codediff.nvim when installed) | "codediff" | false |
+	-- function(worktree) with worktree = { path, branch, base }
+	diff = "auto",
 	yard = {
 		view = "worktrees", -- the view the yard opens in first: "worktrees" or "agents"
 	},
@@ -32,6 +36,7 @@ M.defaults = {
 			start_agent = "a",
 			continue_agent = "c",
 			copy_path = "y",
+			diff = "d", -- changes against the default branch (both views)
 			-- agents view
 			view = "v", -- in the split
 			external = "g", -- in an external terminal
