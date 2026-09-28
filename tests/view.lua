@@ -7,10 +7,7 @@ local sessions = require("switchyard.sessions")
 require("switchyard.tmux").attach_cmd = function()
 	return { "sleep", "30" }
 end
-sessions.tmux_name = function()
-	return "fake"
-end
-local session = { pid = 1, cwd = vim.fn.getcwd(), adapter = { name = "fake" } }
+local session = { pid = 1, cwd = vim.fn.getcwd(), agent = { name = "fake", cmd = { "fake" } }, tmux = "fake", pane = "%1", started = 0 }
 
 view.show(session)
 assert(view.is_open(), "shows the viewer")

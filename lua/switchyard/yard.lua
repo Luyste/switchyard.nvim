@@ -16,7 +16,7 @@ local state = {
 	buf = nil,
 	input_win = nil, -- the filter line, only while filtering
 	input_buf = nil,
-	worktrees = nil, -- the last `wt list` result
+	worktrees = nil, -- the last worktrees.list() result
 	err = nil,
 	rows = {}, -- one entry per list line
 	total = 0, -- rows in this view without the filter
@@ -267,9 +267,6 @@ local function render()
 		return
 	end
 	local all = sessions().all()
-	for _, s in ipairs(all) do
-		sessions().resolve_tmux(s)
-	end
 	state.rows = view == "agents" and agent_rows(all) or worktree_rows(all)
 
 	-- Lines, and the width they need
@@ -389,8 +386,10 @@ local function toggle_view()
 	render()
 end
 
+-- Worktrees and agents, both looked at again (Ctrl-R, and on opening)
 local function refresh()
-	require("switchyard.worktrunk").list(vim.fn.getcwd(), function(worktrees, err)
+	sessions().refresh() -- redraws through SwitchyardSessionsChanged when agents changed
+	require("switchyard.worktrees").list(vim.fn.getcwd(), function(worktrees, err)
 		state.worktrees, state.err = worktrees, err
 		if not state.selected.worktrees then
 			for _, wt in ipairs(worktrees or {}) do
@@ -562,8 +561,8 @@ local actions = {
 			key = "start_agent",
 			label = "start an agent here",
 			run = function(row)
-				require("switchyard.actions").with_adapter(function(adapter)
-					require("switchyard.launch").new(adapter, row.path)
+				require("switchyard.actions").with_agent(function(agent)
+					require("switchyard.launch").new(agent, row.path)
 				end)
 			end,
 		},
@@ -571,8 +570,8 @@ local actions = {
 			key = "continue_agent",
 			label = "continue the last session here",
 			run = function(row)
-				require("switchyard.actions").with_adapter(function(adapter)
-					require("switchyard.launch").continue(adapter, row.path)
+				require("switchyard.actions").with_agent(function(agent)
+					require("switchyard.launch").continue(agent, row.path)
 				end)
 			end,
 		},
@@ -641,8 +640,8 @@ local actions = {
 			any_row = true,
 			run = function()
 				with_worktree("new agent in", nil, function(wt)
-					require("switchyard.actions").with_adapter(function(adapter)
-						require("switchyard.launch").new(adapter, wt.path)
+					require("switchyard.actions").with_agent(function(agent)
+						require("switchyard.launch").new(agent, wt.path)
 					end)
 				end)
 			end,
@@ -677,11 +676,7 @@ local actions = {
 			key = "rename",
 			label = "rename its tmux session",
 			run = function(row)
-				local s = row.session
-				local old = sessions().tmux_name(s)
-				if not old then
-					return warn(sessions().name(s) .. " isn't running in tmux")
-				end
+				local old = row.session.tmux
 				require("switchyard.menu").input({ title = "rename " .. old, default = old }, function(new)
 					if not new or new == "" or new == old then
 						return
@@ -692,7 +687,7 @@ local actions = {
 							return warn("tmux: " .. err)
 						end
 						require("switchyard.view").renamed(old, new)
-						sessions().renamed(s, new)
+						sessions().refresh()
 					end)
 				end)
 			end,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Records the demo GIFs into demo/media (needs vhs, a local pi with pi-nvim).
+# Records the demo GIFs into demo/media (needs vhs and pi).
 # Usage: demo/record.sh [yard|prompt|dispatch|follow ...]   (default: all)
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -4,19 +4,14 @@ local prompt = require("switchyard.prompt")
 local sessions = require("switchyard.sessions")
 
 local sent
-local agent = {
-	pid = 1,
-	cwd = vim.fn.getcwd(),
-	adapter = {
-		name = "fake",
-		send = function(_, message, callback)
-			sent = message
-			callback(true)
-		end,
-	},
-}
+local agent = { pid = 1, cwd = vim.fn.getcwd(), agent = { name = "fake", cmd = { "fake" } }, tmux = "fake", pane = "%1", started = 0 }
 sessions.linked = function()
 	return agent
+end
+sessions.send = function(session, message, callback)
+	assert(session.pane == "%1", "sent to the session's pane")
+	sent = message
+	callback(true)
 end
 
 local editor = vim.api.nvim_get_current_win()
@@ -120,12 +115,12 @@ print("file: ok")
 assert(prompt.slug("Add dark mode!\nmore details") == "add-dark-mode", "slug from the first line")
 assert(prompt.slug("  --Fix: the parser's bug (#12)  ") == "fix-the-parser-s-bug-12", "slug cleans up")
 
-local fake_pi = { name = "pi", task_cmd = function(task) return { "pi", task } end }
-require("switchyard.adapters").active = function()
+local fake_pi = { name = "pi", cmd = { "pi" }, task = true }
+require("switchyard.agents").installed = function()
 	return { fake_pi }
 end
 local created, started
-require("switchyard.worktrunk").create = function(_, branch, callback)
+require("switchyard.worktrees").create = function(_, branch, callback)
 	created = branch
 	callback("/tmp/wt-" .. branch)
 end

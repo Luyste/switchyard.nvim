@@ -62,8 +62,8 @@ CONF
 git add .
 git -c user.name=demo -c user.email=demo@example.com commit -qm "a tiny config parser"
 
-wt switch --create feature/dark-mode --no-cd --yes >/dev/null 2>&1
-wt switch --create fix/parser-errors --no-cd --yes >/dev/null 2>&1
+git worktree add -q -b feature/dark-mode "$REPO.feature-dark-mode"
+git worktree add -q -b fix/parser-errors "$REPO.fix-parser-errors"
 
 # One agent in main, one in the parser worktree. extended-keys lets pi tell
 # Shift+Enter from Enter (it warns otherwise).
