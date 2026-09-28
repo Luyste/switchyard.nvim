@@ -139,8 +139,9 @@ are in. For another repository, open Neovim there.
 Views ~
                                                    *switchyard-yard-worktrees*
 Worktrees view   Every worktree of the repository. `@` marks the current
-                 one, `● linked` the worktree of the linked agent, `● n`
-                 the number of agents in a worktree.
+                 one, `● <name>` (green) the worktree of the linked agent
+                 (the one your prompts go to), `● n` the number of agents
+                 in a worktree.
                                                       *switchyard-yard-agents*
 Agents view      Every agent of the repository, with its worktree. `●`
                  marks the linked agent.

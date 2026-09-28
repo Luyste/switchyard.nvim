@@ -156,12 +156,12 @@ local function worktree_line(i, row, linked)
 		b.add("  ")
 		b.add(wt.symbols, "SwitchyardSymbols")
 	end
-	local linked_here = vim.iter(row.agents):any(function(s)
+	local linked_here = vim.iter(row.agents):find(function(s)
 		return s.pid == linked
 	end)
 	if linked_here then
 		local more = #row.agents > 1 and (" +" .. (#row.agents - 1)) or ""
-		return b, { "● linked" .. more, "SwitchyardLinked" }
+		return b, { "● " .. sessions().name(linked_here) .. more, "SwitchyardLinked" }
 	elseif #row.agents > 0 then
 		return b, { "● " .. #row.agents, "SwitchyardAgent" }
 	end
@@ -181,24 +181,8 @@ end
 -- Title, footer, layout
 ---------------------------------------------------------------------------
 
--- The repo's name: its main worktree's folder (the current one may be a
--- long "repo.branch" folder)
-local function repo_name()
-	for _, wt in ipairs(state.worktrees or {}) do
-		if wt.main then
-			return vim.fn.fnamemodify(wt.path, ":t")
-		end
-	end
-	return vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
-end
-
 local function title()
-	local parts = { { " switchyard ", "SwitchyardHeading" } }
-	if view == "worktrees" then
-		table.insert(parts, { "· " .. repo_name() .. " ", "SwitchyardDim" })
-	end
-	table.insert(parts, { "· " .. view .. " ", "SwitchyardDim" })
-	return parts
+	return { { " switchyard ", "SwitchyardHeading" }, { "· " .. view .. " ", "SwitchyardDim" } }
 end
 
 local function hints(width)
