@@ -69,7 +69,7 @@ found.
 With the built-in plugin manager (`vim.pack`, Neovim 0.12):
 
 ```lua
-vim.pack.add({ "https://github.com/Luyste/switchyard" })
+vim.pack.add({ "https://github.com/Luyste/switchyard.nvim" })
 require("switchyard").setup({})
 ```
 
@@ -77,7 +77,7 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-  "Luyste/switchyard",
+  "Luyste/switchyard.nvim",
   config = function()
     require("switchyard").setup({})
   end,

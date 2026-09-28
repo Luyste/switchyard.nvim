@@ -23,9 +23,11 @@ anything, then **inspect the actual code**: some items below are marked
   pi-nvim; see "Agents through tmux" below).
 - Agents run inside **tmux** sessions (one tmux server; `.tmux.conf` has
   `mouse on`, `window-size latest`, `escape-time 10`, `status off`).
-- Plugin repo checkout: `~/personal/projects/switchyard/` (loaded via
+- Plugin repo checkout: `~/personal/projects/switchyard.nvim/` (loaded via
   runtimepath from my config when present, else `vim.pack` from GitHub
-  `Luyste/switchyard`).
+  `Luyste/switchyard.nvim`). The repo was renamed from `switchyard`: that name
+  (repo and folder) now belongs to a separate Rust program. Inside Neovim the
+  plugin is still `switchyard` (`require("switchyard")`, `:Switchyard`).
 - My config loads it in `~/.config/nvim/lua/plugins/switchyard.lua`:
   - `require("switchyard").setup({})`
   - A `User SwitchyardSwitched` autocmd that opens nvim-tree (inside

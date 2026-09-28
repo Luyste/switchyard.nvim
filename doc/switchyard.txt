@@ -71,12 +71,12 @@ is found (|switchyard-health|).
 3. SETUP                                                    *switchyard-setup*
 
 With the built-in plugin manager (|vim.pack|): >lua
-    vim.pack.add({ "https://github.com/Luyste/switchyard" })
+    vim.pack.add({ "https://github.com/Luyste/switchyard.nvim" })
     require("switchyard").setup({})
 <
 With lazy.nvim: >lua
     {
-      "Luyste/switchyard",
+      "Luyste/switchyard.nvim",
       config = function()
         require("switchyard").setup({})
       end,

@@ -11,7 +11,7 @@ Env PS1 "$ "
 
 # A fresh demo repo with two idle agents, then Neovim in it
 Hide
-Type "demo/setup.sh >/dev/null && cd ~/personal/projects/switchyard-demo && sleep 6 && nvim -u ~/personal/projects/switchyard/demo/init.lua parser.py"
+Type "R=$PWD && demo/setup.sh >/dev/null && cd ~/personal/projects/switchyard-demo && sleep 6 && nvim -u $R/demo/init.lua parser.py"
 Enter
 Wait+Screen@30s /parse_line/
 Sleep 1s
