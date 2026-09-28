@@ -1,10 +1,18 @@
+-- The running agent sessions (from tmux, see snapshot.lua), the one the
+-- editor is linked to, and the rules for linking and following.
 local M = {}
 
--- The linked session (a cached copy; `linked()` refreshes it)
-local link = nil
+-- The last snapshot: { agent, pid, pane, tmux, cwd, started } per session.
+-- `generation` counts snapshots, so a missing linked session only counts as
+-- ended once a snapshot was taken after linking it.
+local cache, generation, fingerprint = {}, 0, nil
+local refreshing, waiting = false, {}
 
--- The linked agent's folder as `follow` last saw it (set in `link` too), and
--- where it moved to while we couldn't follow yet (unsaved changes)
+-- The linked session (a cached copy; `linked()` refreshes it from the cache)
+local link, link_generation = nil, 0
+
+-- The linked agent's folder as the last snapshot showed it, and where it
+-- moved to while we couldn't follow yet (unsaved changes)
 local seen_cwd, follow_to = nil, nil
 
 -- A one-time hold: arriving in this folder keeps the current link (peek)
@@ -13,97 +21,50 @@ local hold = nil
 -- When each agent was last shown in the viewer: pid -> counter (higher = later)
 local viewed, view_count = {}, 0
 
--- tmux session names by process ID: a name, false (not in tmux), or nil (not looked up yet)
-local tmux_names = {}
-
--- Look up (once) which tmux session this session runs in
-function M.resolve_tmux(session)
-	if tmux_names[session.pid] ~= nil then
-		return
-	end
-	tmux_names[session.pid] = false -- "being looked up": only ask once
-	require("switchyard.tmux").session_of_pid(session.pid, function(name)
-		tmux_names[session.pid] = name or false
-		vim.cmd("redrawstatus")
-		vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsChanged" })
-	end)
-end
-
--- The tmux session of `session` got a new name
-function M.renamed(session, name)
-	tmux_names[session.pid] = name
-	vim.cmd("redrawstatus")
-	vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsChanged" })
-end
-
--- The tmux session a session runs in, if known
-function M.tmux_name(session)
-	return tmux_names[session.pid] or nil
-end
-
--- A session's name for people: its tmux session, else the agent's name
-function M.name(session)
-	return tmux_names[session.pid] or session.adapter.name
-end
-
--- The tmux session `session` runs in: callback(name). Warns instead when it
--- doesn't run in tmux.
-function M.with_tmux_name(session, callback)
-	local known = M.tmux_name(session)
-	if known then
-		return callback(known)
-	end
-	require("switchyard.tmux").session_of_pid(session.pid, function(name)
-		if not name then
-			return vim.notify("switchyard: " .. M.describe(session) .. " isn't running in tmux", vim.log.levels.WARN)
-		end
-		tmux_names[session.pid] = name
-		callback(name)
-	end)
-end
-
-local function adapters()
-	return require("switchyard.adapters").active()
-end
-
 function M.describe(session)
-	return session.adapter.name .. " · " .. vim.fn.fnamemodify(session.cwd, ":~")
+	return session.agent.name .. " · " .. vim.fn.fnamemodify(session.cwd, ":~")
+end
+
+-- A session's name for people: its tmux session
+function M.name(session)
+	return session.tmux
 end
 
 ---------------------------------------------------------------------------
--- Looking up sessions
+-- Looking up sessions (all from the cache: cheap, no waiting)
 ---------------------------------------------------------------------------
 
--- All running sessions, from every installed adapter
 function M.all()
-	local list = {}
-	for _, adapter in ipairs(adapters()) do
-		vim.list_extend(list, adapter.sessions())
-	end
-	return list
+	return vim.list_slice(cache)
 end
 
--- Running sessions in one folder
 function M.in_folder(dir)
 	return vim.tbl_filter(function(s)
 		return s.cwd == dir
-	end, M.all())
+	end, cache)
 end
 
--- The linked session, freshly looked up. nil if none, or if it has ended.
+-- The linked session as the last snapshot saw it. nil if none, or if it ended.
 function M.linked()
 	if not link then
 		return nil
 	end
-	for _, s in ipairs(link.adapter.sessions()) do
+	for _, s in ipairs(cache) do
 		if s.pid == link.pid then
-			link = s -- refresh: its folder may have changed
+			link = s -- its folder may have changed
 			return s
 		end
 	end
-	link = nil -- the session ended
-	vim.cmd("redrawstatus")
-	return nil
+	if generation > link_generation then
+		link = nil -- the session ended
+		vim.cmd("redrawstatus")
+	end
+	return link
+end
+
+-- For statuslines: the linked session's process ID
+function M.linked_pid()
+	return link and link.pid
 end
 
 ---------------------------------------------------------------------------
@@ -113,39 +74,26 @@ end
 -- Link to `session` (or unlink with nil). `quiet` skips the message.
 function M.link(session, quiet)
 	local changed = (link and link.pid) ~= (session and session.pid)
-	link = session
+	link, link_generation = session, generation
 	seen_cwd, follow_to = session and session.cwd, nil
-	if session then
-		M.resolve_tmux(session)
-	end
-
 	vim.cmd("redrawstatus")
 	if changed then
 		vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardLinkChanged" })
 	end
 	if not quiet then
 		vim.cmd("redraw")
-		vim.notify(session and ("switchyard: linked to " .. M.describe(session)) or "switchyard: unlinked")
+		vim.notify(session and ("switchyard: linked to " .. M.name(session)) or "switchyard: unlinked")
 	end
 end
 
--- For statuslines: the linked session's process ID, from the cache
-function M.linked_pid()
-	return link and link.pid
-end
-
--- For the statusline: uses the cached link, so it's cheap to call on every redraw
+-- For the statusline: uses the cached link, so it's cheap on every redraw
 function M.status()
 	if not link then
 		return ""
 	end
-	local label = M.name(link)
 	local where = link.cwd ~= vim.fn.getcwd() and (" (in " .. vim.fn.fnamemodify(link.cwd, ":t") .. ")") or ""
-	return label .. where
+	return M.name(link) .. where
 end
----------------------------------------------------------------------------
--- Arriving in a folder
----------------------------------------------------------------------------
 
 -- The viewer showed this agent (it wins when a worktree has several agents)
 function M.viewed(pid)
@@ -161,10 +109,32 @@ local function preferred(list)
 		if va ~= vb then
 			return va > vb
 		end
-		return (a.started or "") > (b.started or "") -- ISO timestamps sort as text
+		return a.started > b.started
 	end)
 	return list[1]
 end
+
+---------------------------------------------------------------------------
+-- Sending
+---------------------------------------------------------------------------
+
+-- An agent's process exists before its screen takes input: text typed into a
+-- session that just started waits until it's this old (seconds)
+local WARM_UP = 4
+
+-- Type `text` into the session and submit it: callback(ok, error_message)
+function M.send(session, text, callback)
+	-- ponytail: a fixed warm-up from the tmux session's start; watch the pane's
+	-- content settle instead if an agent ever needs longer
+	local wait = math.max(0, session.started + WARM_UP - os.time())
+	vim.defer_fn(function()
+		require("switchyard.tmux").submit(session.pane, text, callback)
+	end, wait * 1000)
+end
+
+---------------------------------------------------------------------------
+-- Arriving in a folder
+---------------------------------------------------------------------------
 
 -- After a peek: link to an agent in the editor's worktree after all, the way
 -- a normal switch would have (last viewed, else most recently started)
@@ -213,6 +183,9 @@ end
 -- Follow the linked agent only when it *moved*. Comparing with the editor's
 -- folder instead would pull the editor back after "keep link" in another worktree.
 local function follow()
+	if not require("switchyard.config").options.follow then
+		return
+	end
 	local s = M.linked()
 	if s and s.cwd ~= seen_cwd then
 		seen_cwd, follow_to = s.cwd, s.cwd
@@ -226,21 +199,51 @@ local function follow()
 	end
 end
 
-local function watch(dir)
-	vim.fn.mkdir(dir, "p")
-	local handle = vim.uv.new_fs_event()
-	local pending = false
-	-- Runs in a fast context: defer_fn schedules back onto the main loop
-	handle:start(dir, {}, function()
-		if pending then
-			return
+---------------------------------------------------------------------------
+-- Refreshing the cache
+---------------------------------------------------------------------------
+
+-- What a snapshot looks like, to tell whether anything changed
+local function fingerprint_of(list)
+	local parts = vim.tbl_map(function(s)
+		return table.concat({ s.pid, s.pane, s.tmux, s.cwd }, "\t")
+	end, list)
+	table.sort(parts)
+	return table.concat(parts, "\n")
+end
+
+-- Use a new snapshot: fire SwitchyardSessionsChanged when something changed,
+-- and follow the linked agent when it moved. (Separate for the tests.)
+function M.update(list)
+	cache, generation = list, generation + 1
+	M.linked() -- the link sees its session's new folder, or that it ended
+	local new = fingerprint_of(list)
+	if new ~= fingerprint then
+		fingerprint = new
+		follow()
+		vim.cmd("redrawstatus")
+		vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsChanged" })
+	end
+end
+
+-- Take a new snapshot now; callback() once the cache has it. Calls while one
+-- is running wait for that one.
+function M.refresh(callback)
+	if callback then
+		table.insert(waiting, callback)
+	end
+	if refreshing then
+		return
+	end
+	refreshing = true
+	require("switchyard.snapshot").take(require("switchyard.agents").configured(), function(list)
+		refreshing = false
+		M.update(list)
+		local callbacks = waiting
+		waiting = {}
+		for _, fn in ipairs(callbacks) do
+			fn()
 		end
-		pending = true
-		vim.defer_fn(function()
-			pending = false
-			follow()
-			vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsChanged" })
-		end, 300)
 	end)
 end
 
@@ -248,31 +251,35 @@ end
 -- Setup
 ---------------------------------------------------------------------------
 
+local timer = nil
+
 function M.setup()
 	local group = vim.api.nvim_create_augroup("switchyard_sessions", { clear = true })
 
+	-- Arriving: decide with a fresh snapshot
 	vim.api.nvim_create_autocmd("VimEnter", {
 		group = group,
 		callback = function()
-			vim.schedule(on_arrival)
+			M.refresh(on_arrival)
 		end,
 	})
 	vim.api.nvim_create_autocmd("DirChanged", {
 		group = group,
 		pattern = "global",
 		callback = function()
-			vim.schedule(on_arrival)
+			M.refresh(on_arrival)
 		end,
 	})
+	-- Following waits when there are unsaved changes; saving retries it
+	vim.api.nvim_create_autocmd("BufWritePost", { group = group, callback = follow })
 
-	if require("switchyard.config").options.follow then
-		for _, adapter in ipairs(adapters()) do
-			if adapter.watch_dir then
-				watch(adapter.watch_dir)
-			end
-		end
-		-- Following waits when there are unsaved changes; saving retries it
-		vim.api.nvim_create_autocmd("BufWritePost", { group = group, callback = follow })
+	-- Agents start, stop and move on their own: look every 2 seconds
+	-- ponytail: a fixed interval; slow it down when Neovim isn't focused if it ever matters
+	if not timer then
+		timer = vim.uv.new_timer()
+		timer:start(2000, 2000, vim.schedule_wrap(function()
+			M.refresh()
+		end))
 	end
 end
 

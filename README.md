@@ -20,8 +20,9 @@ of the repo: a git **worktree** per task. That quickly means juggling
 worktrees, terminal sessions and editor state by hand. switchyard keeps them
 together:
 
-- **Tracks** are git worktrees, managed through [worktrunk](https://worktrunk.dev).
-- **Trains** are agent sessions, each running in its own tmux session.
+- **Tracks** are git worktrees.
+- **Trains** are agent sessions (pi, Claude Code, codex, or any CLI agent),
+  each running in its own tmux session.
 - **The yard** is one screen in Neovim to switch worktrees and manage agents.
 - Your editor is **linked** to one agent: prompts go there, and when that agent
   moves to another worktree, the editor follows.
@@ -50,18 +51,18 @@ together:
 ## Requirements
 
 - **Neovim 0.12+**
-- **git**
-- **[worktrunk](https://worktrunk.dev)** (`wt`) for worktrees:
-  `brew install worktrunk && wt config shell install`
-- **tmux**: agents run in tmux sessions, so switchyard can show them in a
-  split and they keep running when Neovim closes
-- **An agent**: today that's [pi](https://pi.dev) with the
-  [pi-nvim](https://github.com/carderne/pi-nvim) extension
-  (`pi install npm:pi-nvim`), which lets switchyard find running sessions and
-  send them prompts. Claude Code support is planned.
+- **git**: worktrees are plain `git worktree`s
+- **tmux**: agents run in tmux sessions, so switchyard can find them, show
+  them in a split and type prompts into them, and they keep running when
+  Neovim closes
+- **An agent CLI**: [pi](https://pi.dev),
+  [Claude Code](https://claude.com/claude-code) and
+  [codex](https://github.com/openai/codex) work out of the box; any other
+  CLI agent can be added in `agents` (see [Agents](#agents)). No agent
+  extensions are needed.
 
-No other Neovim plugins are needed. Run `:checkhealth switchyard` to see
-what's found.
+No Neovim plugins are needed. Run `:checkhealth switchyard` to see what's
+found.
 
 ## Installation
 
@@ -156,6 +157,8 @@ which agent the editor follows. Arriving in a worktree:
 - **no agent**: the link stays (configurable with `empty_worktree`).
 
 When the linked agent moves to another worktree, the editor switches there.
+switchyard sees that as the agent's process changing folders (tmux follows it),
+which agents with a built-in worktree move do (Claude Code's `EnterWorktree`).
 Switching the editor yourself never moves an agent.
 
 **Peek** (`Shift+Enter` in the yard) switches without touching the link: look
@@ -235,13 +238,51 @@ require("switchyard").following_edits() -- true while following edits
 require("switchyard").draft_status()    -- "DRAFT 2" while a prompt draft waits
 ```
 
+### Agents
+
+switchyard finds agents by looking at tmux: every pane in which one of the
+configured agents runs (as a program, or as a script run by node, bun, deno,
+python or ruby) is an agent session. Prompts are typed into its pane with a
+bracketed paste and Enter, so they work for any agent that reads its input
+from the terminal.
+
+`agents` takes preset names (`"pi"`, `"claude"`, `"codex"`) or your own
+tables:
+
+```lua
+agents = {
+  "pi",
+  "claude",
+  {
+    name = "aider",              -- in the yard and in tmux session names
+    cmd = { "aider" },           -- start a new session
+    continue = { "aider", "--restore-chat-history" }, -- optional: `c` in the yard
+    task = true,                 -- optional: a dispatched task goes after `cmd`
+                                 --   (or a function(task) returning the command)
+    fork = nil,                  -- optional: function(session, note) returning a
+                                 --   command that copies `session`'s conversation
+    match = "python.*aider",     -- optional: Lua pattern for its process
+  },
+}
+```
+
+Only agents whose program is installed are offered.
+
+A few things to know:
+
+- Agents are found only when they run in tmux (the ones switchyard starts
+  always do).
+- A prompt sent while an agent shows a question (a permission prompt, Claude
+  Code's "do you trust this folder?") presses Enter on that question.
+- Text you've half-typed in the agent's own input is sent along with it.
+
 ## Configuration
 
 The defaults:
 
 ```lua
 require("switchyard").setup({
-  agents = { "pi" },           -- agent adapters to use, when installed
+  agents = { "pi", "claude", "codex" }, -- presets or your own tables, see Agents
   follow = true,               -- follow the linked agent to other worktrees
   empty_worktree = "keep",     -- arriving where no agent runs: "keep" | "unlink" the link
   terminal = "auto",           -- external terminal: "auto" | "ghostty" | "kitty" | "wezterm"
@@ -287,15 +328,15 @@ require("switchyard").setup({
 
 ## Status
 
-switchyard is young and used daily with pi. Planned: Claude Code support,
-showing whether an agent is working or waiting for you, and choosing the base
-branch for dispatch.
+switchyard is young and used daily with pi and Claude Code. Planned: showing
+whether an agent is working or waiting for you, and choosing the base branch
+for dispatch.
 
 ## Development
 
 Tests run headless: `for t in tests/*.lua; do nvim --headless -u NONE --cmd "set rtp+=." -l $t; done`.
 The demo GIFs are recorded with [vhs](https://github.com/charmbracelet/vhs):
-`demo/record.sh` builds a demo repo with agents (needs pi with pi-nvim) and
+`demo/record.sh` builds a demo repo with agents (needs pi) and
 records every `demo/*.tape`.
 
 ## License

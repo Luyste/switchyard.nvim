@@ -1,7 +1,9 @@
 local M = {}
 
 M.defaults = {
-	agents = { "pi" }, -- agent adapters (lua/switchyard/adapters/<name>.lua)
+	-- Agents that run in tmux: preset names ("pi", "claude", "codex") or your
+	-- own tables (see lua/switchyard/agents.lua). Only installed ones are used.
+	agents = { "pi", "claude", "codex" },
 	follow = true,
 	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
 	terminal = "auto",

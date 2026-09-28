@@ -140,7 +140,7 @@ local function show_name(agent, focus)
 end
 
 -- The agents the viewer can show here: the linked one first, then the others
--- in this worktree, only those running in tmux. Stores them in viewer.list.
+-- in this worktree. Stores them in viewer.list (for the tabs).
 -- callback(list of { pid, name }, linked session or nil)
 local function viewable(callback)
 	local sessions = require("switchyard.sessions")
@@ -151,18 +151,10 @@ local function viewable(callback)
 			table.insert(candidates, s)
 		end
 	end
-	local pids = vim.tbl_map(function(s)
-		return s.pid
+	viewer.list = vim.tbl_map(function(s)
+		return { pid = s.pid, name = s.tmux }
 	end, candidates)
-	require("switchyard.tmux").sessions_for_pids(pids, function(names)
-		viewer.list = {}
-		for _, s in ipairs(candidates) do
-			if names[s.pid] then
-				table.insert(viewer.list, { pid = s.pid, name = names[s.pid] })
-			end
-		end
-		callback(viewer.list, linked)
-	end)
+	callback(viewer.list, linked)
 end
 
 -- Update the tabs while the viewer is open
@@ -174,7 +166,7 @@ local function refresh()
 	end
 end
 
--- Show the linked agent, if it runs in tmux, without taking focus. Only while
+-- Show the linked agent without taking focus. Only while
 -- the viewer is open, or with `reopen` (a worktree switch closed the viewer).
 function M.sync(reopen)
 	if not reopen and not valid_win(viewer.win) then
@@ -212,10 +204,8 @@ vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refre
 
 -- Show `session` in the viewer split
 function M.show(session)
-	require("switchyard.sessions").with_tmux_name(session, function(name)
-		show_name({ name = name, pid = session.pid })
-		refresh()
-	end)
+	show_name({ name = session.tmux, pid = session.pid })
+	refresh()
 end
 
 function M.hide()
@@ -264,14 +254,10 @@ function M.toggle()
 
 	viewable(function(list, linked)
 		if #list == 0 then
-			return vim.notify("switchyard: no agent here runs in tmux. Start one from the yard.", vim.log.levels.WARN)
+			return vim.notify("switchyard: no agent here. Start one from the yard.", vim.log.levels.WARN)
 		end
-		-- The linked agent comes first when it runs in tmux
-		local linked_shown = linked and list[1].pid == linked.pid
-		if linked and not linked_shown then
-			vim.notify("switchyard: the linked agent isn't in tmux, showing another one here")
-		end
-		if linked_shown or #list == 1 then
+		-- The linked agent comes first
+		if linked or #list == 1 then
 			return show_name(list[1])
 		end
 
@@ -373,19 +359,17 @@ end
 
 -- Open `session` in a new external terminal window
 function M.external(session)
-	require("switchyard.sessions").with_tmux_name(session, function(name)
-		local attach = { vim.fn.exepath("tmux"), "attach-session", "-t", "=" .. name }
-		local cmd, err = terminal_command(attach)
-		if not cmd then
-			return vim.notify("switchyard: " .. err .. ". Set `terminal` in setup().", vim.log.levels.WARN)
+	local attach = { vim.fn.exepath("tmux"), "attach-session", "-t", "=" .. session.tmux }
+	local cmd, err = terminal_command(attach)
+	if not cmd then
+		return vim.notify("switchyard: " .. err .. ". Set `terminal` in setup().", vim.log.levels.WARN)
+	end
+	vim.system(cmd, {}, function(res)
+		if res.code ~= 0 then
+			vim.schedule(function()
+				vim.notify("switchyard: couldn't open a terminal: " .. (res.stderr or ""), vim.log.levels.ERROR)
+			end)
 		end
-		vim.system(cmd, {}, function(res)
-			if res.code ~= 0 then
-				vim.schedule(function()
-					vim.notify("switchyard: couldn't open a terminal: " .. (res.stderr or ""), vim.log.levels.ERROR)
-				end)
-			end
-		end)
 	end)
 end
 return M

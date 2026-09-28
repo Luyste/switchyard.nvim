@@ -1,6 +1,6 @@
 -- Actions on worktrees and agents, shared by the yard and the prompt builder.
 -- Each takes an optional on_done, called after the action succeeded.
-local worktrunk = require("switchyard.worktrunk")
+local worktrees = require("switchyard.worktrees")
 
 local M = {}
 
@@ -15,21 +15,21 @@ function M.confirm(title, yes_label, on_yes)
 	})
 end
 
--- The adapter to start: the only installed one, or ask. callback(adapter)
-function M.with_adapter(callback)
-	local list = require("switchyard.adapters").active()
+-- The agent to start: the only installed one, or ask. callback(agent)
+function M.with_agent(callback)
+	local list = require("switchyard.agents").installed()
 	if #list == 0 then
-		return vim.notify("switchyard: no agents installed", vim.log.levels.WARN)
+		return vim.notify("switchyard: none of the configured agents is installed", vim.log.levels.WARN)
 	elseif #list == 1 then
 		return callback(list[1])
 	end
 	require("switchyard.menu").open({
 		title = "which agent?",
-		items = vim.tbl_map(function(adapter)
+		items = vim.tbl_map(function(agent)
 			return {
-				label = adapter.name,
+				label = agent.name,
 				action = function()
-					callback(adapter)
+					callback(agent)
 				end,
 			}
 		end, list),
@@ -44,7 +44,7 @@ function M.create_worktree(cwd, on_done)
 			return
 		end
 		require("switchyard.util").progress("switchyard: creating " .. branch .. " …")
-		worktrunk.create(cwd, branch, function(path, err)
+		worktrees.create(cwd, branch, function(path, err)
 			if not path then
 				return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
 			end
@@ -59,13 +59,12 @@ end
 -- End the tmux session `session` runs in (without asking). callback(name)
 -- once it's gone.
 local function kill(session, callback)
-	require("switchyard.sessions").with_tmux_name(session, function(name)
-		require("switchyard.tmux").kill(name, function(ok, err)
-			if not ok then
-				return vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
-			end
-			callback(name)
-		end)
+	require("switchyard.tmux").kill(session.tmux, function(ok, err)
+		if not ok then
+			return vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
+		end
+		require("switchyard.sessions").refresh()
+		callback(session.tmux)
 	end)
 end
 
@@ -86,7 +85,7 @@ function M.remove_worktree(cwd, wt, on_done, agents)
 			kill(session, function() end)
 		end
 		require("switchyard.util").progress("switchyard: removing " .. wt.branch .. " …")
-		worktrunk.remove(cwd, wt.branch, function(ok, err)
+		worktrees.remove(cwd, wt, function(ok, err)
 			if not ok then
 				return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
 			end

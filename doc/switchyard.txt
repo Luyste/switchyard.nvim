@@ -37,13 +37,13 @@ what the agent is doing.
 Concepts:                                                *switchyard-concepts*
 
 Tracks ~
-    Git worktrees, one checkout of the repository per task. switchyard
-    manages them through worktrunk (`wt`), never with raw git commands.
+    Git worktrees, one checkout of the repository per task, made and
+    removed with `git worktree`.
 
 Trains ~
-    Agent sessions (today: pi). Each one runs in its own tmux session, so
-    switchyard can show it in a split and it keeps running when Neovim
-    closes.
+    Agent sessions: pi, Claude Code, codex or any other CLI agent. Each one
+    runs in its own tmux session, so switchyard can find it, show it in a
+    split and type prompts into it, and it keeps running when Neovim closes.
 
 The yard ~
     One floating window in Neovim to switch worktrees and manage agents.
@@ -59,16 +59,12 @@ The link ~
 
 - Neovim 0.12 or later.
 - git.
-- worktrunk (`wt`) for worktrees, https://worktrunk.dev >sh
-    brew install worktrunk && wt config shell install
-<
-- tmux. Agents run in tmux sessions.
-- An agent. Today that is pi (https://pi.dev) with the pi-nvim extension,
-  which lets switchyard find running sessions and send them prompts: >sh
-    pi install npm:pi-nvim
-<  Claude Code support is planned.
+- tmux. Agents run in tmux sessions; switchyard finds them there.
+- An agent CLI: pi (https://pi.dev), Claude Code or codex work out of the
+  box, any other one can be added (|switchyard-config-agents|). No agent
+  extensions are needed.
 
-No other Neovim plugins are needed. Run `:checkhealth switchyard` to see what
+No Neovim plugins are needed. Run `:checkhealth switchyard` to see what
 is found (|switchyard-health|).
 
 ==============================================================================
@@ -190,7 +186,7 @@ q (close),  close the yard                same
 <C-n>/<C-p> and j/k move the selection.
 
 Actions that remove or stop something ask for confirmation. With several
-agent adapters installed, starting an agent asks which one.
+agents installed, starting an agent asks which one.
 
 Filtering ~
                                                       *switchyard-yard-filter*
@@ -245,9 +241,9 @@ worktree you are in.
 7. THE VIEWER                                              *switchyard-viewer*
 
 |switchyard.toggle_view()| shows the linked agent's terminal in a split on
-the right, and hides it again. If the linked agent does not run in tmux, it
-shows an agent of the current worktree instead (and asks which one when
-there are several). The split's width is set by
+the right, and hides it again. Without a linked agent it shows an agent of
+the current worktree (and asks which one when there are several). The
+split's width is set by
 |switchyard-config-viewer.width|.
 
 |switchyard.focus_view()| jumps between the agent and your code, in terminal
@@ -405,8 +401,8 @@ follow_edits({on})
 
                                                          *switchyard.status()*
 status()
-    For statuslines: the linked agent's tmux session name (or adapter
-    name), with " (in <worktree>)" when it works in another worktree.
+    For statuslines: the linked agent's tmux session name, with
+    " (in <worktree>)" when it works in another worktree.
     Empty string when not linked.
 
                                                 *switchyard.following_edits()*
@@ -424,7 +420,7 @@ draft_status()
 
 Pass options to |switchyard.setup()|. The defaults: >lua
     require("switchyard").setup({
-      agents = { "pi" },
+      agents = { "pi", "claude", "codex" },
       follow = true,
       empty_worktree = "keep",
       terminal = "auto",
@@ -451,9 +447,28 @@ Tables are merged with the defaults; lists (`agents`) are replaced.
 
                                                     *switchyard-config-agents*
 agents ~
-    Default: `{ "pi" }`
-    The agent adapters to use, when installed. pi is the only adapter so
-    far; Claude Code support is planned.
+    Default: `{ "pi", "claude", "codex" }`
+    The agents switchyard knows, by preset name or as your own table. Only
+    installed ones (their program is found) are used.
+
+    switchyard finds agents in tmux: every pane in which a configured agent
+    runs (as a program, or as a script run by node, bun, deno, python or
+    ruby) is an agent session. Prompts are typed into its pane (bracketed
+    paste, then Enter). An agent table: >lua
+    {
+      name = "aider",          -- in the yard and tmux session names
+      cmd = { "aider" },       -- start a new session
+      continue = { "aider", "--restore-chat-history" }, -- optional
+      task = true,             -- optional: a task goes after `cmd`, or
+                               -- a function(task) returning the command
+      fork = nil,              -- optional: function(session, note)
+                               -- returning a command copying the session
+      match = "python.*aider", -- optional: Lua pattern for its process
+    }
+<
+    Good to know: a prompt sent while an agent shows a question (a
+    permission prompt, "do you trust this folder?") presses Enter on that
+    question, and text half-typed in the agent's input is sent along.
 
                                                     *switchyard-config-follow*
 follow ~
@@ -567,11 +582,11 @@ Run: >vim
     :checkhealth switchyard
 <
 It reports:
-- programs: git, wt and tmux, with their versions;
+- programs: git and tmux, with their versions;
 - options: the external terminal that will be used, and whether follow
   edits is available on this system;
-- agents: for each entry in |switchyard-config-agents|, whether the adapter
-  exists, whether its program is installed, and how many sessions run.
+- agents: for each entry in |switchyard-config-agents|, whether its program
+  is installed, and how many of its sessions run in tmux.
 
 ==============================================================================
 17. LICENSE                                               *switchyard-license*

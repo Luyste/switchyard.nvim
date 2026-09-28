@@ -14,7 +14,6 @@ end
 function M.check()
 	vim.health.start("switchyard: programs")
 	check_program("git", { "--version" }, "brew install git")
-	check_program("wt", { "--version" }, "brew install worktrunk && wt config shell install")
 	check_program("tmux", { "-V" }, "brew install tmux")
 
 	vim.health.start("switchyard: options")
@@ -38,19 +37,21 @@ function M.check()
 
 
 	vim.health.start("switchyard: agents")
-	for _, name in ipairs(opts.agents) do
-		local ok, adapter = pcall(require, "switchyard.adapters." .. name)
-		if not ok or type(adapter) ~= "table" then
-			vim.health.info(name .. ": no adapter yet")
-		elseif vim.fn.executable(adapter.cmd) == 0 then
-			vim.health.warn(name .. ": " .. adapter.cmd .. " not installed")
+	local running = {}
+	for _, s in ipairs(require("switchyard.sessions").all()) do
+		running[s.agent.name] = (running[s.agent.name] or 0) + 1
+	end
+	local any = false
+	for _, agent in ipairs(require("switchyard.agents").configured()) do
+		if vim.fn.executable(agent.cmd[1]) == 1 then
+			any = true
+			vim.health.ok(("%s: installed, %d running in tmux"):format(agent.name, running[agent.name] or 0))
 		else
-			local count = #adapter.sessions()
-			vim.health.ok(("%s: installed, %d running session(s)"):format(name, count))
-			if count == 0 and adapter.hint then
-				vim.health.info(adapter.hint)
-			end
+			vim.health.info(agent.name .. ": `" .. agent.cmd[1] .. "` not installed")
 		end
+	end
+	if not any then
+		vim.health.warn("none of the configured agents is installed", "Install one (pi, claude, codex) or add your own in `agents`")
 	end
 end
 

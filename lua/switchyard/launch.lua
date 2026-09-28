@@ -3,66 +3,55 @@ local sessions = require("switchyard.sessions")
 
 local M = {}
 
--- Check every 500 ms for a new session from `adapter` in `cwd`.
--- `known` holds the process IDs that existed before the launch.
--- callback(session), or callback(nil) after 30 seconds.
-local function wait_for_session(adapter, cwd, known, callback)
+-- Look every 500 ms for an agent process in `pane`, up to 30 seconds.
+-- callback(session), or callback(nil) when none showed up.
+local function wait_for_pane(pane, callback)
 	local tries = 0
-	local timer = vim.uv.new_timer()
-	timer:start(
-		500,
-		500,
-		vim.schedule_wrap(function()
-			tries = tries + 1
-			for _, s in ipairs(adapter.sessions()) do
-				if s.cwd == cwd and not known[s.pid] then
-					timer:stop()
-					timer:close()
+	local function look()
+		tries = tries + 1
+		sessions.refresh(function()
+			for _, s in ipairs(sessions.all()) do
+				if s.pane == pane then
 					return callback(s)
 				end
 			end
 			if tries >= 60 then
-				timer:stop()
-				timer:close()
-				callback(nil)
+				return callback(nil)
 			end
+			vim.defer_fn(look, 500)
 		end)
-	)
+	end
+	look()
 end
 
--- A short tmux session name for an agent in folder `cwd`: worktrunk's
--- "<repo>.<branch>" folders drop the "<repo>." part; at most 32 characters
-local function session_name(adapter, cwd)
+-- A short tmux session name for an agent in folder `cwd`: "<repo>.<branch>"
+-- worktree folders drop the "<repo>." part; at most 32 characters
+local function session_name(agent, cwd)
 	local folder = vim.fn.fnamemodify(cwd, ":t")
 	local branch = folder:match("^[^.]+%.(.+)$") or folder -- ponytail: a repo name with a dot keeps its tail
-	return (adapter.name .. "-" .. branch):sub(1, 32)
+	return (agent.name .. "-" .. branch):sub(1, 32)
 end
 
--- Start `cmd` for `adapter` in a new tmux session in `cwd` (default: the
--- editor's folder). Links to it when it runs where the editor is, once it has
--- registered; an agent started in another worktree only gets a message.
+-- Start `cmd` for `agent` in a new tmux session in `cwd` (default: the
+-- editor's folder). Once the agent runs, it's linked when it's where the
+-- editor is; an agent started in another worktree only gets a message.
 -- callback(session) is optional.
-function M.start(adapter, cmd, label, cwd, callback)
+function M.start(agent, cmd, label, cwd, callback)
 	cwd = cwd or vim.fn.getcwd()
-	local known = {}
-	for _, s in ipairs(adapter.sessions()) do
-		known[s.pid] = true
-	end
-
-	tmux.free_name(session_name(adapter, cwd), function(name)
-		tmux.new(name, cwd, cmd, function(ok, err)
-			if not ok then
+	tmux.free_name(session_name(agent, cwd), function(name)
+		tmux.new(name, cwd, cmd, function(pane, err)
+			if not pane then
 				return vim.notify("switchyard: tmux: " .. err, vim.log.levels.ERROR)
 			end
 			require("switchyard.util").progress(("switchyard: starting %s …"):format(label))
 
-			wait_for_session(adapter, cwd, known, function(s)
+			wait_for_pane(pane, function(s)
 				if not s then
 					return vim.notify(
-						("switchyard: %s is running in tmux session %s but didn't register. %s"):format(
-							adapter.name,
+						("switchyard: no %s running in tmux session %s. Is `%s` the right command?"):format(
+							agent.name,
 							name,
-							adapter.hint or ""
+							table.concat(cmd, " "):sub(1, 40)
 						),
 						vim.log.levels.WARN
 					)
@@ -82,29 +71,30 @@ function M.start(adapter, cmd, label, cwd, callback)
 end
 
 -- `cwd` is optional everywhere: default the editor's folder
-function M.new(adapter, cwd)
-	M.start(adapter, adapter.new_cmd(), "new " .. adapter.name, cwd)
+function M.new(agent, cwd)
+	M.start(agent, agent.cmd, "new " .. agent.name, cwd)
 end
 
-function M.continue(adapter, cwd)
-	M.start(adapter, adapter.continue_cmd(), adapter.name .. " (continue)", cwd)
+function M.continue(agent, cwd)
+	if not agent.continue then
+		return vim.notify("switchyard: " .. agent.name .. " can't continue a session", vim.log.levels.WARN)
+	end
+	M.start(agent, agent.continue, agent.name .. " (continue)", cwd)
 end
 
--- Fork a running session into `cwd`
+-- Fork a running session into `cwd`. The copy starts with a note about where
+-- it runs now (the history is full of paths from the original worktree).
 function M.fork(source, cwd)
-	local cmd = source.adapter.fork_cmd and source.adapter.fork_cmd(source)
+	local here = cwd or vim.fn.getcwd()
+	local note = (
+		"Note: this session was forked from %s and now runs in %s. "
+		.. "Absolute paths in the history refer to the original worktree; work in the new one."
+	):format(source.cwd, here)
+	local cmd = source.agent.fork and source.agent.fork(source, note)
 	if not cmd then
 		return vim.notify("switchyard: can't fork " .. sessions.describe(source), vim.log.levels.WARN)
 	end
-	local here = cwd or vim.fn.getcwd()
-	M.start(source.adapter, cmd, "fork of " .. sessions.describe(source), here, function(s)
-		-- The history is full of paths from the source worktree: tell the fork where it is now
-		local note = (
-			"Note: this session was forked from %s and now runs in %s. "
-			.. "Absolute paths in the history refer to the original worktree; work in the new one."
-		):format(source.cwd, here)
-		s.adapter.send(s, note, function() end)
-	end)
+	M.start(source.agent, cmd, "fork of " .. sessions.name(source), here)
 end
 
 return M

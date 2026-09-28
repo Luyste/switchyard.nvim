@@ -48,12 +48,11 @@ local function draft_text()
 	return vim.trim(table.concat(vim.api.nvim_buf_get_lines(state.buf, 0, -1, false), "\n"))
 end
 
--- Where prompts go: the linked agent
 -- Where this prompt goes: the chosen agent while it runs, else the linked one
 local function target()
 	local chosen = state.target
 	if chosen then
-		for _, s in ipairs(chosen.adapter.sessions()) do
+		for _, s in ipairs(require("switchyard.sessions").all()) do
 			if s.pid == chosen.pid then
 				return s
 			end
@@ -318,18 +317,19 @@ local function dispatch()
 		if not branch or branch == "" then
 			return M.open() -- back to the draft
 		end
-		require("switchyard.actions").with_adapter(function(adapter)
-			if not adapter.task_cmd then
-				return vim.notify("switchyard: " .. adapter.name .. " can't start with a task", vim.log.levels.WARN)
+		require("switchyard.actions").with_agent(function(agent)
+			local agents = require("switchyard.agents")
+			if not agents.task_cmd(agent, "") then
+				return vim.notify("switchyard: " .. agent.name .. " can't start with a task", vim.log.levels.WARN)
 			end
 			require("switchyard.util").progress("switchyard: creating " .. branch .. " …")
-			require("switchyard.worktrunk").create(cwd, branch, function(path, err)
+			require("switchyard.worktrees").create(cwd, branch, function(path, err)
 				if not path then
 					return vim.notify("switchyard: " .. err, vim.log.levels.ERROR)
 				end
 				-- Contexts come from this worktree: absolute paths for the new one
 				local task = message({ cwd = path })
-				require("switchyard.launch").start(adapter, adapter.task_cmd(task), "task on " .. branch, path)
+				require("switchyard.launch").start(agent, agents.task_cmd(agent, task), "task on " .. branch, path)
 				clear()
 				state.dispatch = false
 			end)
@@ -350,7 +350,7 @@ function M.send()
 		return vim.notify("switchyard: no linked agent. Link one in the yard first.", vim.log.levels.WARN)
 	end
 	local name = require("switchyard.sessions").name(s)
-	s.adapter.send(s, message(s), function(ok, err)
+	require("switchyard.sessions").send(s, message(s), function(ok, err)
 		if not ok then
 			return vim.notify("switchyard: couldn't send to " .. name .. ": " .. tostring(err), vim.log.levels.ERROR)
 		end
@@ -388,7 +388,7 @@ end
 -- Ctrl-T: send this prompt to another agent of this repo (the link stays)
 local function choose_target()
 	local sessions = require("switchyard.sessions")
-	require("switchyard.worktrunk").list(vim.fn.getcwd(), function(worktrees)
+	require("switchyard.worktrees").list(vim.fn.getcwd(), function(worktrees)
 		local branch_of = {}
 		for _, wt in ipairs(worktrees or {}) do
 			branch_of[wt.path] = wt.branch
@@ -417,7 +417,7 @@ local function choose_target()
 	end)
 end
 
--- Ctrl-O: hand the prompt over: paste it into the agent's own input (in tmux),
+-- Ctrl-O: hand the prompt over: paste it into the agent's own input,
 -- without sending, and show the agent so you can finish it there
 local function hand_over()
 	if state.dispatch then
@@ -430,16 +430,14 @@ local function hand_over()
 	if not s then
 		return vim.notify("switchyard: no target agent", vim.log.levels.WARN)
 	end
-	require("switchyard.sessions").with_tmux_name(s, function(name)
-		require("switchyard.tmux").paste(name, message(s), function(ok, err)
-			if not ok then
-				return vim.notify("switchyard: tmux: " .. tostring(err), vim.log.levels.ERROR)
-			end
-			clear()
-			state.target = nil
-			M.close()
-			require("switchyard.view").show(s)
-		end)
+	require("switchyard.tmux").paste(s.pane, message(s), function(ok, err)
+		if not ok then
+			return vim.notify("switchyard: tmux: " .. tostring(err), vim.log.levels.ERROR)
+		end
+		clear()
+		state.target = nil
+		M.close()
+		require("switchyard.view").show(s)
 	end)
 end
 
