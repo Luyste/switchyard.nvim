@@ -3,7 +3,7 @@
 # Usage: demo/record.sh [yard|prompt|dispatch|follow ...]   (default: all)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-for name in "${@:-yard prompt dispatch follow}"; do
+for name in "${@:-yard prompt dispatch}"; do
 	for n in $name; do
 		echo "recording $n"
 		vhs "demo/$n.tape"

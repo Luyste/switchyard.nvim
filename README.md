@@ -3,15 +3,14 @@
 **Agents running on worktrees, and an editor that follows them.**
 
 switchyard is a Neovim plugin for working with several AI coding agents at
-once, each in its own git worktree. It gives you one small screen to switch
-between worktrees and agents, a terminal split to talk to an agent, a prompt
+once, each in its own git worktree. It gives you one picker to switch between
+worktrees, agents and projects, a terminal split to talk to an agent, a prompt
 builder that sends code from your editor, and an editor that keeps up with
 what the agent is doing.
 
-![The yard: worktrees and agents, the action menu, filtering and switching](demo/media/yard.gif)
-
-<sub>The demos use a terminal with `<Space>` as leader; switchyard sets no keys
-itself (see [Keymaps](#keymaps)).</sub>
+<sub>The demos below use a terminal with `<Space>` as leader; switchyard sets
+no keys itself (see [Keymaps](#keymaps)). They were recorded before the yard
+became an fzf-lua picker.</sub>
 
 ## Why
 
@@ -23,7 +22,8 @@ together:
 - **Tracks** are git worktrees.
 - **Trains** are agent sessions (pi, Claude Code, codex, or any CLI agent),
   each running in its own tmux session.
-- **The yard** is one screen in Neovim to switch worktrees and manage agents.
+- **The yard** is one picker in Neovim to switch worktrees and projects and
+  manage agents.
 - Your editor is **linked** to one agent: prompts go there, and when that agent
   moves to another worktree, the editor follows.
 
@@ -155,9 +155,11 @@ the kind of row under the cursor:
 | `Alt-V` / `Alt-G` | | show it in the split / in an external terminal | |
 | `Alt-S` | | write a prompt for this agent | |
 | `Alt-R` | | rename its tmux session | |
-| `Ctrl-R`, `F1` | refresh, all keys | same | same |
+| `Ctrl-R`, `F1` | refresh, fzf-lua's help | same | same |
 
-Every key can be changed in `keys.yard` (fzf key names, see Configuration).
+The header shows the views and their prefixes; the footer below the list
+shows every key of the view you're in. Every key can be changed in
+`keys.yard` (fzf key names, see Configuration).
 
 A typical detour: `%` → `Enter` on your Neovim config (pinned) → `&` →
 `Alt-A`: an agent starts there and the viewer shows it working.
@@ -246,6 +248,10 @@ Two cheap functions (no file access) for your statusline:
 require("switchyard").status()          -- "pi-shoebox" or "pi-shoebox (in other-worktree)"
 require("switchyard").draft_status()    -- "DRAFT 2" while a prompt draft waits
 ```
+
+The yard is an fzf-lua window ('filetype' `fzf`); switchyard's menus and the
+prompt builder use 'filetype' `switchyard`, and the viewer's buffer is named
+`switchyard://<agent>`.
 
 ### Agents
 
