@@ -37,8 +37,6 @@ function M.switch(dir)
 		return false
 	end
 
-	local viewer_open = require("switchyard.view").is_open()
-
 	-- Back to a single window with an empty buffer. A fresh window, because the
 	-- current one may be a file tree, a terminal or a float: `only` + `enew`
 	-- there would keep that window and replace its buffer.
@@ -68,13 +66,8 @@ function M.switch(dir)
 		data = { from = from, to = dir },
 	})
 
-	-- `only` closed the viewer: bring it back once the arrival rules have run
-	-- (they're scheduled from DirChanged, so this runs after them)
-	if viewer_open then
-		vim.schedule(function()
-			require("switchyard.view").sync(true)
-		end)
-	end
+	-- `only` closed the viewer: the arrival rules (on DirChanged) bring it back
+	-- with the agent of this folder, or leave it closed
 	return true
 end
 

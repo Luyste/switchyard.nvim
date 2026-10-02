@@ -5,7 +5,6 @@ M.defaults = {
 	-- own tables (see lua/switchyard/agents.lua). Only installed ones are used.
 	agents = { "pi", "claude", "codex" },
 	follow = true,
-	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
 	terminal = "auto",
 	live_reload = true, -- open files follow changes made by agents
 	yard = {

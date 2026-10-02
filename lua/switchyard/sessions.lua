@@ -15,11 +15,13 @@ local link, link_generation = nil, 0
 -- moved to while we couldn't follow yet (unsaved changes)
 local seen_cwd, follow_to = nil, nil
 
--- A one-time hold: arriving in this folder keeps the current link (peek)
+-- A one-time hold: arriving in this folder keeps the current link and the
+-- viewer as they were (peek): { dir, viewer = was the viewer open }
 local hold = nil
 
--- When each agent was last shown in the viewer: pid -> counter (higher = later)
-local viewed, view_count = {}, 0
+-- When each agent was last used (linked, or shown in the viewer):
+-- pid -> counter (higher = later)
+local used, use_count = {}, 0
 
 function M.describe(session)
 	return session.agent.name .. " · " .. vim.fn.fnamemodify(session.cwd, ":~")
@@ -76,6 +78,9 @@ function M.link(session, quiet)
 	local changed = (link and link.pid) ~= (session and session.pid)
 	link, link_generation = session, generation
 	seen_cwd, follow_to = session and session.cwd, nil
+	if session then
+		M.viewed(session.pid)
+	end
 	vim.cmd("redrawstatus")
 	if changed then
 		vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardLinkChanged" })
@@ -95,17 +100,18 @@ function M.status()
 	return M.name(link) .. where
 end
 
--- The viewer showed this agent (it wins when a worktree has several agents)
+-- This agent was used: linked or shown in the viewer (the last used one wins
+-- when a folder has several agents)
 function M.viewed(pid)
-	view_count = view_count + 1
-	viewed[pid] = view_count
+	use_count = use_count + 1
+	used[pid] = use_count
 end
 
--- Of several agents in one worktree: the one last shown in the viewer, else
--- the most recently started
+-- Of several agents in one folder: the one used last, else the most recently
+-- started
 local function preferred(list)
 	table.sort(list, function(a, b)
-		local va, vb = viewed[a.pid] or 0, viewed[b.pid] or 0
+		local va, vb = used[a.pid] or 0, used[b.pid] or 0
 		if va ~= vb then
 			return va > vb
 		end
@@ -146,33 +152,41 @@ function M.link_here()
 	M.link(preferred(here))
 end
 
--- Peek: the next arrival in `dir` keeps the current link, whatever is there.
--- nil clears it. Any other arrival discards it.
+-- Peek: the next arrival in `dir` keeps the current link and the viewer,
+-- whatever is there. nil clears it. Any other arrival discards it.
 function M.keep_link_for(dir)
-	hold = dir and vim.fn.fnamemodify(dir, ":p"):gsub("/$", "") or nil
+	hold = dir and { dir = vim.fn.fnamemodify(dir, ":p"):gsub("/$", ""), viewer = require("switchyard.view").is_open() }
+		or nil
 end
 
-local function on_arrival()
+-- The arrival rule: the editor goes with the agent of where it is. An agent
+-- here (the last used one, if several): link it and show it in the viewer.
+-- None: unlink and close the viewer. At startup (`show` false) only the link.
+local function on_arrival(show)
 	local cwd = vim.fn.getcwd()
 	local held = hold
 	hold = nil
-	if held == cwd then
+	local view = require("switchyard.view")
+	if held and held.dir == cwd then
+		if held.viewer then
+			view.sync(true) -- the switch closed every window: bring the viewer back
+		end
 		return
 	end
 	local here = M.in_folder(cwd)
 	local current = M.linked()
-
-	if #here > 0 then
-		-- Already linked to one of them: keep it. Otherwise the link moves along.
-		local linked_here = current and current.cwd == cwd
-		if not linked_here then
-			M.link(preferred(here), true)
-		end
-	elseif current and current.cwd ~= cwd then
-		if require("switchyard.config").options.empty_worktree == "unlink" then
+	if #here == 0 then
+		if current then
 			M.link(nil, true)
 		end
-		-- "keep": nothing to do, the statusline shows where the linked agent is
+		return view.hide()
+	end
+	-- Already linked to one of them: keep it (it's the last used one anyway)
+	if not (current and current.cwd == cwd) then
+		M.link(preferred(here), true)
+	end
+	if show then
+		view.sync(true)
 	end
 end
 
@@ -260,14 +274,18 @@ function M.setup()
 	vim.api.nvim_create_autocmd("VimEnter", {
 		group = group,
 		callback = function()
-			M.refresh(on_arrival)
+			M.refresh(function()
+				on_arrival(false)
+			end)
 		end,
 	})
 	vim.api.nvim_create_autocmd("DirChanged", {
 		group = group,
 		pattern = "global",
 		callback = function()
-			M.refresh(on_arrival)
+			M.refresh(function()
+				on_arrival(true)
+			end)
 		end,
 	})
 	-- Following waits when there are unsaved changes; saving retries it
