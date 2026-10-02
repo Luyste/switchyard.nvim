@@ -1,8 +1,7 @@
 local M = {}
 
--- list: the agents the viewer can show here, as { pid, name, tool, cwd } (for
--- the winbar tabs). term: the sidekick terminal, with the sidekick backend.
-local viewer = { buf = nil, win = nil, name = nil, list = {}, term = nil }
+-- list: the agents the viewer can show here, as { pid, name } (for the winbar tabs)
+local viewer = { buf = nil, win = nil, name = nil, list = {} }
 
 local function valid_win(win)
 	return win ~= nil and vim.api.nvim_win_is_valid(win)
@@ -42,6 +41,36 @@ function M.winbar()
 	return " " .. badge .. table.concat(tabs) .. "%=%#SwitchyardDim#" .. hint .. " %*"
 end
 
+-- Window options for a terminal running a full-screen program (tmux), from
+-- sidekick.nvim's terminal window (folke/sidekick.nvim,
+-- lua/sidekick/cli/terminal.lua, Apache-2.0, see licenses/sidekick.nvim.txt).
+-- Columns on the left break the terminal's reflow; wrapping and horizontal
+-- scrolling shift what you see. Added here: scrolloff = 0 (a large global
+-- value makes the view jump in normal mode).
+local terminal_options = {
+	colorcolumn = "",
+	cursorcolumn = false,
+	cursorline = false,
+	fillchars = "eob: ",
+	list = false,
+	number = false,
+	relativenumber = false,
+	scrolloff = 0,
+	sidescrolloff = 0,
+	signcolumn = "no",
+	statuscolumn = "",
+	foldcolumn = "0",
+	spell = false,
+	wrap = false,
+	winfixwidth = true,
+}
+
+-- Start typing in the viewer, scrolled fully to the left (sidekick's focus())
+local function start_typing()
+	vim.fn.winrestview({ leftcol = 0 })
+	vim.cmd.startinsert()
+end
+
 -- The viewer window on the right: reuse it, or create it
 local function open_window()
 	if valid_win(viewer.win) then
@@ -52,10 +81,6 @@ local function open_window()
 	viewer.win = vim.api.nvim_get_current_win()
 	local width = require("switchyard.config").options.viewer.width
 	vim.api.nvim_win_set_width(viewer.win, math.floor(vim.o.columns * width))
-	vim.wo[viewer.win].winfixwidth = true
-	vim.wo[viewer.win].number = false
-	vim.wo[viewer.win].relativenumber = false
-	vim.wo[viewer.win].signcolumn = "no"
 	require("switchyard.ui").set_highlights()
 end
 
@@ -65,15 +90,14 @@ local function attach(name)
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_win_set_buf(viewer.win, buf)
 	vim.fn.jobstart(require("switchyard.tmux").attach_cmd(name), { term = true })
+	local started = vim.uv.hrtime()
 	pcall(vim.api.nvim_buf_set_name, buf, "switchyard://" .. name)
 	viewer.buf, viewer.name = buf, name
 
 	-- Entering the viewer goes straight to typing
 	vim.api.nvim_create_autocmd("BufEnter", {
 		buffer = buf,
-		callback = function()
-			vim.cmd.startinsert()
-		end,
+		callback = start_typing,
 	})
 	-- Switching terminal/normal mode doesn't redraw the winbar by itself
 	vim.api.nvim_create_autocmd({ "TermEnter", "TermLeave" }, {
@@ -83,10 +107,14 @@ local function attach(name)
 		end,
 	})
 
-	-- The agent's session ended: clean up instead of leaving a dead terminal
+	-- The agent's session ended: clean up instead of leaving a dead terminal.
+	-- Unless attaching failed right away: keep the error readable (sidekick).
 	vim.api.nvim_create_autocmd("TermClose", {
 		buffer = buf,
 		callback = function()
+			if vim.v.event.status ~= 0 and (vim.uv.hrtime() - started) / 1e6 < 3000 then
+				return
+			end
 			vim.schedule(function()
 				if viewer.buf == buf then
 					if valid_win(viewer.win) then
@@ -107,44 +135,6 @@ local function attach(name)
 	end
 end
 
--- The terminal window: sidekick's (when installed, unless configured
--- otherwise) or switchyard's own split. Returns "sidekick" or "builtin".
-function M.backend()
-	local choice = require("switchyard.config").options.viewer.backend
-	if choice ~= "builtin" and require("switchyard.integrations.sidekick").available() then
-		return "sidekick"
-	end
-	return "builtin"
-end
-
--- Show `agent` in a sidekick terminal: its window, size and keys, running
--- `tmux attach`. Another agent replaces the terminal (that only detaches it).
-local function show_sidekick(agent, focus)
-	if viewer.name ~= agent.name or not (viewer.term and viewer.term:is_running()) then
-		local old = viewer.term
-		viewer.term, viewer.name = nil, agent.name
-		if old then
-			old:close()
-		end
-		local term = require("switchyard.integrations.sidekick").terminal(agent.name, agent.tool, agent.cwd)
-		-- sidekick (re)applies its window options on every mode change: ours go in too
-		term.opts.wo = vim.tbl_extend("force", term.opts.wo or {}, {
-			winbar = "%!v:lua.require'switchyard.view'.winbar()",
-		})
-		viewer.term = term
-	end
-	require("switchyard.ui").set_highlights()
-	if focus == false then
-		viewer.term:show()
-	else
-		viewer.term:focus()
-	end
-	viewer.win, viewer.buf = viewer.term.win, viewer.term.buf
-	if viewer.buf then
-		pcall(vim.api.nvim_buf_set_name, viewer.buf, "switchyard://" .. agent.name) -- for statuslines
-	end
-end
-
 -- A tmux session was renamed: the terminal stays attached, only the name changes
 function M.renamed(old, new)
 	if viewer.name == old then
@@ -159,10 +149,6 @@ end
 -- Show `agent` ({ name, pid }) in the viewer split. focus = false: keep the
 -- cursor where it is (for updates the user didn't ask for).
 local function show_name(agent, focus)
-	if M.backend() == "sidekick" then
-		show_sidekick(agent, focus)
-		return require("switchyard.sessions").viewed(agent.pid)
-	end
 	local from = vim.api.nvim_get_current_win()
 	open_window()
 	if viewer.name == agent.name and valid_buf(viewer.buf) then
@@ -173,12 +159,15 @@ local function show_name(agent, focus)
 	require("switchyard.sessions").viewed(agent.pid)
 	-- Window-local options set here only stick to the buffer in the window at that
 	-- moment, so set them after the buffer is in place. %! re-evaluates on every redraw.
+	for option, value in pairs(terminal_options) do
+		vim.api.nvim_set_option_value(option, value, { win = viewer.win, scope = "local" })
+	end
 	vim.wo[viewer.win].winbar = "%!v:lua.require'switchyard.view'.winbar()"
 	vim.wo[viewer.win].winhighlight = "WinBar:StatusLine,WinBarNC:StatusLineNC"
 	if focus == false then
 		vim.api.nvim_set_current_win(from)
 	else
-		vim.cmd.startinsert()
+		start_typing()
 	end
 end
 
@@ -195,7 +184,7 @@ local function viewable(callback)
 		end
 	end
 	viewer.list = vim.tbl_map(function(s)
-		return { pid = s.pid, name = s.tmux, tool = s.agent.name, cwd = s.cwd }
+		return { pid = s.pid, name = s.tmux }
 	end, candidates)
 	callback(viewer.list, linked)
 end
@@ -247,17 +236,12 @@ vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refre
 
 -- Show `session` in the viewer split
 function M.show(session)
-	show_name({ name = session.tmux, pid = session.pid, tool = session.agent.name, cwd = session.cwd })
+	show_name({ name = session.tmux, pid = session.pid })
 	refresh()
 end
 
 function M.hide()
 	if not valid_win(viewer.win) then
-		return
-	end
-	if viewer.term then
-		viewer.term:hide() -- also handles being the last window
-		viewer.win = nil
 		return
 	end
 	local others = vim.tbl_filter(function(win)
@@ -291,7 +275,7 @@ function M.focus()
 		return M.toggle()
 	end
 	vim.api.nvim_set_current_win(viewer.win)
-	vim.cmd.startinsert()
+	start_typing()
 end
 
 -- Cmd+J: hide the viewer, or show the linked agent (or one from this worktree)

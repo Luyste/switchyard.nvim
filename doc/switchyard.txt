@@ -251,10 +251,6 @@ split's width is set by
 |switchyard.focus_view()| jumps between the agent and your code, in terminal
 and normal mode. It opens the viewer when it is hidden.
 
-With sidekick.nvim installed, the viewer is sidekick's terminal window: its
-layout, size and keys come from your sidekick setup (`cli.win`), and it runs
-`tmux attach` to the agent's session (see |switchyard-config-viewer.backend|).
-
 The bar on top of the viewer shows the agents you can see here, with `●` on
 the linked one. A NORMAL badge warns you when your keys do not reach the
 agent; press `i` to type again.
@@ -436,7 +432,6 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       },
       viewer = {
         width = 0.45,
-        backend = "auto",
       },
       keys = {
         yard = {
@@ -520,14 +515,7 @@ yard.view ~
                                               *switchyard-config-viewer.width*
 viewer.width ~
     Default: `0.45`
-    Share of the editor's width for the viewer split (builtin backend).
-
-                                            *switchyard-config-viewer.backend*
-viewer.backend ~
-    Default: `"auto"`
-    The viewer's terminal window: `"sidekick"` (sidekick.nvim's terminal
-    window, set up by sidekick's `cli.win`), `"builtin"` (switchyard's own
-    split) or `"auto"` (sidekick when installed).
+    Share of the editor's width for the viewer split.
 
                                                       *switchyard-config-keys*
 keys.yard ~

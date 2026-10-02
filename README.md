@@ -175,12 +175,6 @@ bar on top shows which agents you can see here, with `●` on the linked one.
 The viewer is for typing to the agent. Choosing *which* agent to see happens
 in the yard (`v` in the agents view).
 
-With [sidekick.nvim](https://github.com/folke/sidekick.nvim) installed, the
-viewer is sidekick's terminal window: its layout, size and keys come from your
-sidekick setup (`cli.win`), and it runs `tmux attach` to the agent's session.
-switchyard still finds, starts and sends to the agents. Without sidekick (or
-with `viewer.backend = "builtin"`) it's switchyard's own split.
-
 `open_external()` opens the linked agent in a new terminal window instead
 (Ghostty, kitty, WezTerm, Alacritty or Terminal.app, or your own command).
 
@@ -302,7 +296,6 @@ require("switchyard").setup({
   },
   viewer = {
     width = 0.45,              -- share of the editor width for the viewer split
-    backend = "auto",          -- "auto" (sidekick.nvim when installed) | "sidekick" | "builtin"
   },
   keys = {
     yard = {
@@ -351,4 +344,6 @@ records every `demo/*.tape`.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The viewer's terminal window settings are adapted from
+[sidekick.nvim](https://github.com/folke/sidekick.nvim) (Apache-2.0, see
+[licenses/sidekick.nvim.txt](licenses/sidekick.nvim.txt)).

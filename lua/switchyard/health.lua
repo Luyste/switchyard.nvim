@@ -21,12 +21,6 @@ function M.check()
 
 	local ok_view, view = pcall(require, "switchyard.view")
 	if ok_view then
-		local backend = view.backend()
-		if opts.viewer.backend == "sidekick" and backend ~= "sidekick" then
-			vim.health.warn("viewer: sidekick.nvim not found, using the builtin split", "Install folke/sidekick.nvim")
-		else
-			vim.health.ok("viewer: " .. (backend == "sidekick" and "sidekick.nvim's terminal window" or "builtin split"))
-		end
 		local name, err = view.terminal_name()
 		if name then
 			vim.health.ok("external terminal: " .. name)

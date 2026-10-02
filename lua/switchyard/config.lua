@@ -12,10 +12,7 @@ M.defaults = {
 		view = "worktrees", -- the view the yard opens in first: "worktrees" or "agents"
 	},
 	viewer = {
-		width = 0.45, -- share of the editor's width for the viewer split (builtin only)
-		-- The terminal window: "auto" (sidekick.nvim when installed, else
-		-- builtin) | "sidekick" | "builtin"
-		backend = "auto",
+		width = 0.45, -- share of the editor's width for the viewer split
 	},
 	keys = {
 		-- Inside the yard (buffer-local). More arrive with the yard's actions.

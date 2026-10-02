@@ -195,22 +195,13 @@ lua/switchyard/
                              follow edits (recursive watcher, see Status)
   yard.lua                   the yard (part 1 done, see below); close() returns to
                              the window it was opened from
-  view.lua                   the viewer (agent tabs winbar, toggle/focus/sync, external
-                             terminal). backend() = "sidekick" | "builtin"
-                             (`viewer.backend`, "auto" = sidekick when installed):
-                             sidekick → show_sidekick: one sidekick Terminal per shown
-                             agent (cmd = tmux attach), our winbar merged into
-                             `term.opts.wo` (sidekick re-applies its wo on mode changes),
-                             buffer named switchyard://<name>; builtin → own vsplit
-  integrations/sidekick.lua  available(), terminal(name, tool, cwd): a sidekick
-                             Terminal (internal API sidekick.cli.terminal) running
-                             `tmux attach`
+  view.lua                   the viewer (split + statusline with agent tabs, cycle,
+                             external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload + follow edits; arrival: arrival rules + peek;
                              history: earlier sessions from a fake home;
                              launch: linking after a start; yard: open/close;
-                             view: showing/hiding, also as the last window, builtin +
-                             sidekick when installed)
+                             view: showing/hiding, also as the last window)
 ```
 
 ## Status
@@ -296,11 +287,15 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   `launch.pick` and the viewer's choice; `ui.lua` used by yard.lua; config has
   `viewer.width`, `terminal`, `empty_worktree`, `live_reload`.
 
-- **Viewer through sidekick** (Oct 2026): the builtin terminal split glitched
-  sometimes; with sidekick.nvim installed the viewer is sidekick's terminal
-  window (its layout/keys from sidekick's `cli.win`). PR #2 (scope cut to a
-  worktree switcher) was merged and then reverted; its folders view + `:Switchyard
-  <folder>` live in branch `feature/sidekick-scope` if wanted again.
+- **Viewer terminal options from sidekick.nvim** (Oct 2026): the viewer split
+  glitched sometimes. sidekick.nvim was tried as the viewer and then dropped
+  (only switchyard should be installed); its terminal window settings were
+  copied into view.lua (`terminal_options`, applied after the terminal buffer
+  is in the window; `start_typing` = leftcol 0 + startinsert; TermClose keeps
+  the window when attaching failed within 3 s). Attribution:
+  `licenses/sidekick.nvim.txt` + README. PR #2 (scope cut to a worktree
+  switcher) was merged and then reverted; its folders view + `:Switchyard
+  <folder>` live in branch `feature/sidekick-scope`.
 
 ### Open (small)
 
@@ -462,6 +457,9 @@ it). Worktree rows may still show the diff size vs the default branch later
 - A pending redraw (e.g. the yard closing, insert mode ending) wipes a message
   shown right before it: `redraw` before `vim.notify` in switch paths.
 - `:only` also closes the viewer: whoever switches must bring it back.
+- A split inherits the editor window's local options (number, signcolumn,
+  `scrolloff = 19` from my config, cursorline): a terminal needs its own
+  (`view.lua` `terminal_options`), set after its buffer is in the window.
 - The last window can't be hidden or closed (E444): `view.hide()` swaps in an
   empty buffer when the viewer is the only window left.
 - A `local function f` is only visible BELOW its definition; above it, `f`
