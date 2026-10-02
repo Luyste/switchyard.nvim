@@ -16,6 +16,7 @@ function M.check()
 	check_program("git", { "--version" }, "brew install git")
 	check_program("tmux", { "-V" }, "brew install tmux")
 	check_program("fzf", { "--version" }, "brew install fzf")
+	check_program("fd", { "--version" }, "brew install fd (finds projects)")
 
 	vim.health.start("switchyard: plugins")
 	if pcall(require, "fzf-lua") then

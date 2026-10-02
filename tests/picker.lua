@@ -58,10 +58,41 @@ local ag = lines("agents")
 assert(#ag.lines == 2 and ag.shown[1]:find("pi%-feat") and ag.shown[1]:find("feat$"), vim.inspect(ag.shown))
 assert(ag.start == 1, "starts on the linked agent")
 
--- Every action has a key, and keys don't collide within a view
+-- Projects: the current one first, pinned folders, the agents' projects, then
+-- what fd finds (faked here)
+local projects = require("switchyard.projects")
+projects.find = function(on_found, on_done)
+	on_found(root .. "/other")
+	on_done()
+end
+projects.recent = function()
+	return {}
+end
+projects.cached = function()
+	return {}
+end
+vim.fn.mkdir(root .. "/other", "p")
+vim.fn.mkdir(root .. "/notes", "p")
+require("switchyard.config").options.projects.pinned = { root .. "/notes" }
+local found, done = {}, false
+picker.project_lines(function(l)
+	table.insert(found, (l:match("^(.-)\t"):gsub("\27%[[%d;]*m", "")))
+end, function()
+	done = true
+end)
+assert(done and #found == 3, vim.inspect(found))
+assert(found[1]:find("@ repo") and found[1]:find("● 2"), "the current project (a worktree's repo) first, with its agents: " .. found[1])
+assert(found[2]:find("notes") and found[3]:find("other"), vim.inspect(found))
+
+-- Outside a git repo: the folder itself is the one "worktree"
+vim.cmd.cd(root .. "/notes")
+local plain = lines("worktrees")
+assert(#plain.lines == 1 and plain.shown[1]:find("@ notes"), vim.inspect(plain.shown))
+
+-- Every action has a key, and keys don't collide within a kind
 local keys = require("switchyard.config").options.keys.yard
 for view, list in pairs(picker.actions) do
-	local seen = { [keys.toggle_view] = true, [keys.refresh] = true }
+	local seen = { [keys.refresh] = true }
 	for _, action in ipairs(list) do
 		local key = keys[action.key]
 		assert(key, view .. ": no key for " .. action.key)

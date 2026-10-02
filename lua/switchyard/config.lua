@@ -8,7 +8,16 @@ M.defaults = {
 	terminal = "auto",
 	live_reload = true, -- open files follow changes made by agents
 	yard = {
-		view = "worktrees", -- the view the yard opens in first: "worktrees" or "agents"
+		view = "worktrees", -- the view without a prefix: "worktrees" | "agents" | "projects"
+		-- Typed first in the search, a prefix shows another view
+		prefixes = { worktrees = "&", agents = "*", projects = "%" },
+	},
+	-- The projects view (`%`): git repos under `roots` (found with fd, skipping
+	-- `exclude`), plus `pinned` folders (git or not) and the ones you went to
+	projects = {
+		roots = { "~" },
+		exclude = { "Library", "node_modules", ".cache", ".Trash", ".local/share/nvim", ".oh-my-zsh", ".claude/plugins" },
+		pinned = {}, -- e.g. { "~/.config/nvim" }
 	},
 	viewer = {
 		width = 0.45, -- share of the editor's width for the viewer split
@@ -19,7 +28,6 @@ M.defaults = {
 		yard = {
 			activate = "enter", -- worktrees: switch · agents: go to (switch + link)
 			alt_activate = "alt-enter", -- worktrees: peek (keep link) · agents: link only
-			toggle_view = "tab",
 			refresh = "ctrl-r",
 			-- Same key, same idea in both views
 			new = "alt-n", -- worktrees: new worktree · agents: new agent in a worktree
@@ -48,6 +56,11 @@ function M.setup(opts)
 	-- Lists are replaced, not merged
 	if opts.agents then
 		M.options.agents = opts.agents
+	end
+	for _, key in ipairs({ "roots", "exclude", "pinned" }) do
+		if opts.projects and opts.projects[key] then
+			M.options.projects[key] = opts.projects[key]
+		end
 	end
 end
 
