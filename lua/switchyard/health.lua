@@ -37,11 +37,6 @@ function M.check()
 		end
 	end
 
-	if require("switchyard.live").follow_supported() then
-		vim.health.ok("follow edits: available")
-	else
-		vim.health.info("follow edits: not available (needs recursive folder watching: macOS or Windows)")
-	end
 
 
 	vim.health.start("switchyard: agents")

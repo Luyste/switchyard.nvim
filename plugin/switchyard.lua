@@ -3,26 +3,14 @@ if vim.g.loaded_switchyard then
 end
 vim.g.loaded_switchyard = true
 
--- :Switchyard opens the yard; :Switchyard <subcommand> runs one
-local subcommands = {
-	["follow-edits"] = function()
-		require("switchyard").follow_edits()
-	end,
-}
-
+-- :Switchyard opens the yard; :Switchyard <folder> switches the editor there
 vim.api.nvim_create_user_command("Switchyard", function(args)
 	if args.args == "" then
 		return require("switchyard").open_yard()
 	end
-	local run = subcommands[args.args]
-	if not run then
-		return vim.notify("switchyard: unknown subcommand " .. args.args, vim.log.levels.ERROR)
-	end
-	run()
+	require("switchyard").switch(vim.fn.expand(args.args))
 end, {
 	nargs = "?",
-	desc = "Open the switchyard yard, or run a subcommand",
-	complete = function()
-		return vim.tbl_keys(subcommands)
-	end,
+	complete = "dir",
+	desc = "Open the switchyard yard, or switch to a folder",
 })

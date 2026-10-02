@@ -12,16 +12,6 @@ function M.switch(dir)
 	require("switchyard.projects").switch(dir)
 end
 
--- Show the file the agent just changed (on/off; nil toggles)
-function M.follow_edits(on)
-	require("switchyard.live").follow_edits(on)
-end
-
--- For statuslines: is following edits on? Cheap, no I/O.
-function M.following_edits()
-	return package.loaded["switchyard.live"] ~= nil and require("switchyard.live").following_edits()
-end
-
 -- The prompt builder: write a prompt for the linked agent (the draft is kept).
 -- In visual mode the selected lines are added as context first.
 function M.prompt()
