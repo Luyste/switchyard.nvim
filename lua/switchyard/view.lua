@@ -1,7 +1,8 @@
 local M = {}
 
--- list: the agents the viewer can show here, as { pid, name } (for the winbar tabs)
-local viewer = { buf = nil, win = nil, name = nil, list = {} }
+-- list: the agents the viewer can show here, as { pid, name, tool, cwd } (for
+-- the winbar tabs). term: the sidekick terminal, with the sidekick backend.
+local viewer = { buf = nil, win = nil, name = nil, list = {}, term = nil }
 
 local function valid_win(win)
 	return win ~= nil and vim.api.nvim_win_is_valid(win)
@@ -106,6 +107,44 @@ local function attach(name)
 	end
 end
 
+-- The terminal window: sidekick's (when installed, unless configured
+-- otherwise) or switchyard's own split. Returns "sidekick" or "builtin".
+function M.backend()
+	local choice = require("switchyard.config").options.viewer.backend
+	if choice ~= "builtin" and require("switchyard.integrations.sidekick").available() then
+		return "sidekick"
+	end
+	return "builtin"
+end
+
+-- Show `agent` in a sidekick terminal: its window, size and keys, running
+-- `tmux attach`. Another agent replaces the terminal (that only detaches it).
+local function show_sidekick(agent, focus)
+	if viewer.name ~= agent.name or not (viewer.term and viewer.term:is_running()) then
+		local old = viewer.term
+		viewer.term, viewer.name = nil, agent.name
+		if old then
+			old:close()
+		end
+		local term = require("switchyard.integrations.sidekick").terminal(agent.name, agent.tool, agent.cwd)
+		-- sidekick (re)applies its window options on every mode change: ours go in too
+		term.opts.wo = vim.tbl_extend("force", term.opts.wo or {}, {
+			winbar = "%!v:lua.require'switchyard.view'.winbar()",
+		})
+		viewer.term = term
+	end
+	require("switchyard.ui").set_highlights()
+	if focus == false then
+		viewer.term:show()
+	else
+		viewer.term:focus()
+	end
+	viewer.win, viewer.buf = viewer.term.win, viewer.term.buf
+	if viewer.buf then
+		pcall(vim.api.nvim_buf_set_name, viewer.buf, "switchyard://" .. agent.name) -- for statuslines
+	end
+end
+
 -- A tmux session was renamed: the terminal stays attached, only the name changes
 function M.renamed(old, new)
 	if viewer.name == old then
@@ -120,6 +159,10 @@ end
 -- Show `agent` ({ name, pid }) in the viewer split. focus = false: keep the
 -- cursor where it is (for updates the user didn't ask for).
 local function show_name(agent, focus)
+	if M.backend() == "sidekick" then
+		show_sidekick(agent, focus)
+		return require("switchyard.sessions").viewed(agent.pid)
+	end
 	local from = vim.api.nvim_get_current_win()
 	open_window()
 	if viewer.name == agent.name and valid_buf(viewer.buf) then
@@ -152,7 +195,7 @@ local function viewable(callback)
 		end
 	end
 	viewer.list = vim.tbl_map(function(s)
-		return { pid = s.pid, name = s.tmux }
+		return { pid = s.pid, name = s.tmux, tool = s.agent.name, cwd = s.cwd }
 	end, candidates)
 	callback(viewer.list, linked)
 end
@@ -204,12 +247,17 @@ vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refre
 
 -- Show `session` in the viewer split
 function M.show(session)
-	show_name({ name = session.tmux, pid = session.pid })
+	show_name({ name = session.tmux, pid = session.pid, tool = session.agent.name, cwd = session.cwd })
 	refresh()
 end
 
 function M.hide()
 	if not valid_win(viewer.win) then
+		return
+	end
+	if viewer.term then
+		viewer.term:hide() -- also handles being the last window
+		viewer.win = nil
 		return
 	end
 	local others = vim.tbl_filter(function(win)

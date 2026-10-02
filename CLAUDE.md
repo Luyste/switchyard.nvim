@@ -195,13 +195,22 @@ lua/switchyard/
                              follow edits (recursive watcher, see Status)
   yard.lua                   the yard (part 1 done, see below); close() returns to
                              the window it was opened from
-  view.lua                   the viewer (split + statusline with agent tabs, cycle,
-                             external terminal)
+  view.lua                   the viewer (agent tabs winbar, toggle/focus/sync, external
+                             terminal). backend() = "sidekick" | "builtin"
+                             (`viewer.backend`, "auto" = sidekick when installed):
+                             sidekick → show_sidekick: one sidekick Terminal per shown
+                             agent (cmd = tmux attach), our winbar merged into
+                             `term.opts.wo` (sidekick re-applies its wo on mode changes),
+                             buffer named switchyard://<name>; builtin → own vsplit
+  integrations/sidekick.lua  available(), terminal(name, tool, cwd): a sidekick
+                             Terminal (internal API sidekick.cli.terminal) running
+                             `tmux attach`
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload + follow edits; arrival: arrival rules + peek;
                              history: earlier sessions from a fake home;
                              launch: linking after a start; yard: open/close;
-                             view: showing/hiding, also as the last window)
+                             view: showing/hiding, also as the last window, builtin +
+                             sidekick when installed)
 ```
 
 ## Status
@@ -286,6 +295,12 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - Checked: `tmux.new` cds inside the shell line; `menu.lua` used by
   `launch.pick` and the viewer's choice; `ui.lua` used by yard.lua; config has
   `viewer.width`, `terminal`, `empty_worktree`, `live_reload`.
+
+- **Viewer through sidekick** (Oct 2026): the builtin terminal split glitched
+  sometimes; with sidekick.nvim installed the viewer is sidekick's terminal
+  window (its layout/keys from sidekick's `cli.win`). PR #2 (scope cut to a
+  worktree switcher) was merged and then reverted; its folders view + `:Switchyard
+  <folder>` live in branch `feature/sidekick-scope` if wanted again.
 
 ### Open (small)
 
