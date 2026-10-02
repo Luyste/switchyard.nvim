@@ -10,7 +10,7 @@ what the agent is doing.
 
 <sub>The demos below use a terminal with `<Space>` as leader; switchyard sets
 no keys itself (see [Keymaps](#keymaps)). They were recorded before the yard
-became an fzf-lua picker.</sub>
+got its projects view and fuzzy filter.</sub>
 
 ## Why
 
@@ -29,11 +29,10 @@ together:
 
 ## Features
 
-- **The yard**: one [fzf-lua](https://github.com/ibhagwan/fzf-lua) picker with
-  three views chosen by a prefix: `&` worktrees, `*` agents, `%` projects (any
-  git repo on your machine, plus pinned folders). Fuzzy search, a preview (git
-  status, or the agent's screen), and keys to switch, peek, create and remove
-  worktrees, start, fork, rename and stop agents.
+- **The yard**: a small floating window with three views: *worktrees*,
+  *agents* and *projects* (any git repo on your machine, plus pinned folders).
+  Switch, peek, create and remove worktrees, start, fork, rename and stop
+  agents, all with single keys and a `.` action menu; `/` filters fuzzily.
 - **Linking and following**: the editor goes with the agent of where it is:
   arriving in a folder links its agent and shows it in the viewer; if the
   linked agent moves, the editor follows.
@@ -62,9 +61,7 @@ together:
   CLI agent can be added in `agents` (see [Agents](#agents)). No agent
   extensions are needed.
 
-- **[fzf-lua](https://github.com/ibhagwan/fzf-lua)** (and `fzf`): the yard is
-  an fzf-lua picker
-- **fd**: finds the projects (`%`)
+- **fd**: finds the projects (the yard's projects view)
 
 Run `:checkhealth switchyard` to see what's found.
 
@@ -123,46 +120,43 @@ name ever changes.
 
 ### The yard
 
-Open it with `open_yard()` or `:Switchyard`: one fzf-lua picker with three
-views. Type a prefix first to choose one; without a prefix you get
-`yard.view` (worktrees):
+Open it with `open_yard()` or `:Switchyard`. It opens on the current
+worktree (or the linked agent, or the current project) in normal mode.
+`Tab` cycles the views:
 
-| Prefix | View | Preview |
-| --- | --- | --- |
-| `&` | the worktrees of this repo (outside a repo: the folder itself) | `git status`, recent commits |
-| `*` | the agents of this repo | the agent's screen |
-| `%` | projects: the current one, pinned folders, projects with agents (`●`), recent ones, then every git repo `fd` finds under `projects.roots` | `git status` (or the folder's files) |
+| View | Shows |
+| --- | --- |
+| worktrees | the worktrees of this repo: `@` current, `*` uncommitted, `● <linked agent> +n` / `● n` agents (outside a repo: the folder itself) |
+| agents | the agents of this repo, the linked one first, with their worktree |
+| projects | the current project, pinned folders, projects with agents (`● n`), recent ones, then every git repo `fd` finds under `projects.roots` (cached, so the list is there at once) |
 
-`%sho` searches the projects for "sho". The projects found are cached, so the
-list is there at once while `fd` looks again.
+`/` filters **fuzzily**: the letters you type in order, not necessarily next
+to each other (`flf` finds `feature/login-form`), best matches first, the
+matched letters highlighted.
 
-Plain letters type into the search, so actions use `Alt` (on macOS: Option,
-set as Meta in your terminal or Neovide, e.g.
-`vim.g.neovide_input_macos_option_key_is_meta = "only_left"`). Keys act on
-the kind of row under the cursor:
-
-| Key | Worktree | Agent | Project |
+| Key | Worktrees | Agents | Projects |
 | --- | --- | --- | --- |
-| `Enter` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
-| `Alt-Enter` | peek: switch, keep link and viewer | link it, stay (picker stays open) | peek |
-| `Alt-A` | start an agent here | | start an agent there (the editor stays) |
-| `Alt-C` | continue an earlier session here | | |
-| `Alt-N` | new worktree | new agent in a worktree | |
-| `Alt-D` | dispatch a task | dispatch a task | |
-| `Ctrl-X` | remove worktree (choose: keep or stop its agents) | stop the agent | |
-| `Alt-F` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree | |
-| `Alt-Y` | copy the path | | copy the path |
-| `Alt-V` / `Alt-G` | | show it in the split / in an external terminal | |
-| `Alt-S` | | write a prompt for this agent | |
-| `Alt-R` | | rename its tmux session | |
-| `Ctrl-R`, `F1` | refresh, fzf-lua's help | same | same |
+| `Enter`, `1`–`9` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
+| `Shift+Enter` | peek: switch, keep link and viewer | link it, stay where you are | peek |
+| `Tab` | agents view | projects view | worktrees view |
+| `n` | new worktree | new agent in a worktree | |
+| `N` | dispatch a task | dispatch a task | |
+| `D` | remove worktree (choose: keep or stop its agents) | stop the agent | |
+| `f` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree | |
+| `a` / `c` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | | `a`: start an agent there (the editor stays) |
+| `y` | copy the path | | copy the path |
+| `v` / `g` | | show it in the split / in an external terminal | |
+| `s` | | write a prompt for this agent | |
+| `r` | | rename its tmux session | |
+| `/` | fuzzy filter | fuzzy filter | fuzzy filter |
+| `.` / `?` | actions for this row / all keys | same | same |
+| `Ctrl-R`, `q` | refresh, close | same | same |
 
-The header shows the views and their prefixes; the footer below the list
-shows every key of the view you're in. Every key can be changed in
-`keys.yard` (fzf key names, see Configuration).
+Every key can be changed in `keys.yard` (see Configuration).
 
-A typical detour: `%` → `Enter` on your Neovim config (pinned) → `&` →
-`Alt-A`: an agent starts there and the viewer shows it working.
+A typical detour: `Tab Tab` (projects) → `/nvim` → `Enter` on your Neovim
+config (pinned) → `Tab` back to worktrees → `a`: an agent starts there and the
+viewer shows it working.
 
 ### Linking, following and peeking
 
@@ -180,7 +174,7 @@ switchyard sees that as the agent's process changing folders (tmux follows it),
 which agents with a built-in worktree move do (Claude Code's `EnterWorktree`).
 Switching the editor yourself never moves an agent.
 
-**Peek** (`Alt-Enter` in the yard, also for projects and plain folders)
+**Peek** (`Shift+Enter` in the yard, also for projects and plain folders)
 switches without touching the link or the viewer: look
 around in worktree B, copy a snippet, and send it to your agent in A. Changed
 your mind? `link_here()` links an agent of the worktree you're in.
@@ -249,9 +243,7 @@ require("switchyard").status()          -- "pi-shoebox" or "pi-shoebox (in other
 require("switchyard").draft_status()    -- "DRAFT 2" while a prompt draft waits
 ```
 
-The yard and switchyard's questions (which agent, which worktree, branch
-name, confirm) are fzf-lua windows ('filetype' `fzf`); the prompt builder uses
-'filetype' `switchyard`, and the viewer's buffer is named
+The yard, its menus and the prompt builder use 'filetype' `switchyard`, and the viewer's buffer is named
 `switchyard://<agent>`.
 
 ### Agents
@@ -307,8 +299,7 @@ require("switchyard").setup({
                                --   | "alacritty" | "terminal.app" | function(cmd) return argv end
   live_reload = true,          -- reload open files when agents change them
   yard = {
-    view = "worktrees",        -- the view without a prefix: "worktrees" | "agents" | "projects"
-    prefixes = { worktrees = "&", agents = "*", projects = "%" },
+    view = "worktrees",        -- the view the yard opens in: "worktrees" | "agents" | "projects"
   },
   projects = {                 -- the projects view (%)
     roots = { "~" },           -- where fd looks for git repos
@@ -321,11 +312,11 @@ require("switchyard").setup({
   },
   keys = {
     yard = {
-      -- fzf key names; plain letters type into the search
-      activate = "enter", alt_activate = "alt-enter", refresh = "ctrl-r", new = "alt-n", remove = "ctrl-x", fork = "alt-f",
-      dispatch = "alt-d", start_agent = "alt-a", continue_agent = "alt-c",
-      copy_path = "alt-y", view = "alt-v", external = "alt-g",
-      rename = "alt-r", send = "alt-s",
+      activate = "<CR>", alt_activate = "<S-CR>", toggle_view = "<Tab>",
+      filter = "/", refresh = "<C-r>", close = "q", actions = ".", help = "?",
+      new = "n", remove = "D", fork = "f", dispatch = "N",
+      start_agent = "a", continue_agent = "c", copy_path = "y",
+      view = "v", external = "g", rename = "r", send = "s",
     },
   },
 })

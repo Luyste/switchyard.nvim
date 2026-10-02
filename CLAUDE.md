@@ -10,7 +10,9 @@ anything, then **inspect the actual code**: some items below are marked
 - I'm learning Neovim plugin development while building this. Explain **what**
   you change and **why** (the Neovim/Lua concept behind it), briefly.
 - Small steps, each testable. Tell me how to test each step in Neovide.
-- Plain Lua, Neovim 0.12+. One plugin dependency: fzf-lua (the yard).
+- Plain Lua, Neovim 0.12+, no plugin dependencies. (An fzf-lua yard was
+  tried in Oct 2026 and reverted: I prefer switchyard's own windows; the
+  fuzzy matching came over via `matchfuzzypos`.)
 - When something breaks, find the root cause before patching.
 
 ## My setup
@@ -76,19 +78,20 @@ anything, then **inspect the actual code**: some items below are marked
   - no agent → unlink and close the viewer.
   - VimEnter: only the link, the viewer stays closed.
   - Starting an agent in the editor's folder links it and shows it (launch).
-- **Enter vs Alt-Enter in the yard (switching):**
+- **Enter vs Shift+Enter in the yard (switching):**
   - Enter = **switch**: the editor goes there and the arrival rules apply.
-  - Alt-Enter = **peek** (worktrees, projects, plain folders): the editor goes
+  - Shift+Enter = **peek** (worktrees, projects, plain folders): the editor goes
     there but the link AND the viewer stay as they were (`keep_link_for(dir)`
     records whether the viewer was open; `on_arrival` brings it back). The link stays
     on the current agent, whatever the worktree contains (statusline shows
     `agent (in <other worktree>)`). Used to grab context from B and send it to
     agent A (with the prompt builder's cross-worktree paths).
-- **One yard, views by prefix, one meaning per key:** `&` worktrees, `*`
-  agents, `%` projects (`yard.prefixes`; no prefix = `yard.view`). Keys act
-  on the kind of row under the cursor (alt-n = new worktree / new agent,
-  ctrl-x = remove worktree / stop agent). Enter on an agent = "go to"
-  (switch + link); Alt-Enter on an agent = link only.
+- **Three yard views, one meaning per key:** worktrees → agents → projects
+  (Tab cycles; `yard.view` = first). Keys act on what the current view shows
+  (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
+  Enter on an agent = "go to" (switch + link); Shift+Enter = link only. `/`
+  filters fuzzily (`vim.fn.matchfuzzypos`, best score first, matched letters
+  highlighted; projects match on the folder name only).
 - **Prompt builder = chat convention:** Enter sends, Shift+Enter is a new line.
 - **Dispatch** (fire-and-forget): describe a task → new worktree + agent started
   there with the task as its first message. The editor does NOT switch and the
@@ -103,13 +106,13 @@ anything, then **inspect the actual code**: some items below are marked
   bracketed paste + Enter into the pane. Following: the pane's
   `pane_current_path` (the agent's real working directory). No agent
   extensions (pi-nvim is gone), no sockets, no registries.
-- **Dependencies:** programs (git, tmux, fzf, the agents) and ONE plugin,
-  fzf-lua (decided Oct 2026: switchyard is my personal tool; the yard is an
-  fzf-lua picker). Reported by the health check. Other plugins stay optional. Every plugin integration is optional (`pcall(require, …)`),
+- **Dependencies:** hard dependencies are PROGRAMS only (git, tmux, fd, the
+  agents; reported by the health check). switchyard never requires another
+  Neovim plugin. Every plugin integration is optional (`pcall(require, …)`),
   lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
   simply not offered, and is reported by the health check. Pluggable features
   follow the `terminal` pattern: `"auto" | <name> | function(...)`.
-- **Projects (`%`):** projects only (no worktrees of other repos): the
+- **Projects view:** projects only (no worktrees of other repos): the
   current project, `projects.pinned`, projects with agents, recent ones
   (`stdpath("state")/switchyard/recent.json`), the cached last scan
   (`projects.json`), then `fd` over `projects.roots` minus
@@ -121,14 +124,10 @@ anything, then **inspect the actual code**: some items below are marked
   draws them over the border line). Title = the float's winbar
   (`ui.title(win, chunks)`), hints = a virtual line below the last line
   (`ui.hints(buf, text)`); both add a line to the window's height.
-- **Questions in fzf-lua (Oct 2026):** choices via `menu.open` (items
-  {label, action, key?, danger?}, on_cancel), text via `menu.input` (fzf's
-  search line is the input: `--disabled`, the text from `opts.last_query`).
-  Both are small fzf-lua windows (`no_hide`, no preview, no border title);
-  focus goes back where it was (insert mode again in the prompt builder,
-  which stays open while an fzf window has focus). fzf-lua closes its window
-  BEFORE the action runs: `on_close` waits two schedules to tell a cancel
-  from a choice.
+- **Questions in switchyard's own style:** choices via `menu.open`, text via
+  `menu.input` (a small float below the yard when opened from it; ⏎ confirm,
+  Esc cancels, clicking elsewhere cancels). Never `vim.ui.select` /
+  `vim.ui.input` (those end up at the bottom of the screen).
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.
@@ -143,7 +142,7 @@ anything, then **inspect the actual code**: some items below are marked
 ## Module map (as designed; verify against code)
 
 ```
-plugin/switchyard.lua        :Switchyard → open the yard (guarded by vim.g.loaded_switchyard)
+plugin/switchyard.lua        :Switchyard → open the yard; :Switchyard <folder> → switch there
 lua/switchyard/
   init.lua                   setup(opts) → config, sessions, live; public API:
                              switch, prompt, dispatch,
@@ -206,26 +205,17 @@ lua/switchyard/
   ui.lua                     shared highlights (linked to standard groups, default=true)
                              + hide/show cursor (guicursor → blended hl), one shared save;
                              badge text color picked by WCAG contrast (Normal fg vs bg)
-  menu.lua                   open(opts) / input(opts, cb) as small fzf-lua windows
-                             (same API as the old float menus: callers unchanged)
+  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
+                             used for every choice; menu.input for text
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers
-  picker.lua                 the yard: ONE fzf-lua picker, views by prefix (Oct 2026,
-                             replaced yard.lua). Built like fzf-lua's global picker:
-                             fzf_exec(contents, {_start=false}) gives (cmd, opts), then
-                             `--bind start/change:+transform:<lua>` (shell.stringify_data,
-                             "{q}") returns reload(cmd)+change-header(..)+search:<rest>
-                             when the prefix changes the view (state.view), else
-                             search:<rest>; `load:+transform` gives pos(start). One
-                             contents function reads state.view. Rows by key in
-                             state.rows (line = colored text + TAB + key, --with-nth=1).
-                             `actions` per KIND (worktree/agent/project) {key, label,
-                             run(row), any_row?, stay?}; fzf actions bound once per key
-                             name, dispatch on the row's kind (empty view: state.view's
-                             kind); keys with any stay action are reload actions
-                             (non-stay kinds hide the picker, then run). Preview: tmux
-                             capture-pane (agent), git status + log, or `ls` outside
-                             git. M.lines(view, cb), M.project_lines(on_line, on_done).
+  yard.lua                   the yard: three views (worktrees, agents, projects), Tab
+                             cycles; fuzzy `/` filter (`filtered(rows, texts_of)` +
+                             `match` = matchfuzzypos); projects: `load_projects()` once
+                             per open (current, pinned, recent, cached, then fd via
+                             projects.find, redrawn every 100 ms as results come);
+                             `worktree_list()` = git's or `plain_folder()` outside git.
+                             close() returns to the window it was opened from
   projects.lua               (also) root(dir) (a linked worktree's `.git` file gives
                              the main repo), remember/recent, cached, find(on_found,
                              on_done) = fd --hidden --no-ignore -t d --prune -g .git
@@ -235,8 +225,8 @@ lua/switchyard/
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload; arrival: arrival rules + peek (fake viewer);
                              history: earlier sessions from a fake home;
-                             launch: linking after a start; picker: lines + keys
-                             (skipped without fzf-lua);
+                             launch: linking after a start; yard: open/close, fuzzy
+                             filter, projects view (fd faked), plain folder;
                              view: showing/hiding, also as the last window)
 ```
 
@@ -253,12 +243,11 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - **Continue earlier sessions** (`c` in the worktrees view): a menu of the
   worktree's earlier sessions (all installed agents, newest first, running ones
   left out), so agents can be stopped (`D`) to free memory and resumed later.
-- **The yard is an fzf-lua picker** (Oct 2026, replaced the own float yard.lua):
-  see picker.lua in the module map. Keys in `keys.yard` (fzf names). Views by
-  prefix (& worktrees, * agents, % projects), no Tab. Lost vs the old yard:
-  1-9 quick picks, live redraw while open, Shift+Enter (now alt-enter). Gained:
-  fuzzy search, previews (agent screen, git status), projects anywhere.
-- (Old) **Compact yard** (replaced part 1): one float sized to its content (width
+- **Yard, Oct 2026:** fuzzy `/` filter, a projects view (see Conventions),
+  the folder itself as the one worktree outside git. (An fzf-lua version of
+  the yard and the menus was built and reverted, see git history of
+  feature/fzf-yard.)
+- **Compact yard** (replaced part 1): one float sized to its content (width
   50..90, height ≤ 60% of lines), centered, opens in normal mode. Two views,
   Tab toggles, remembered while Neovim runs (`yard.view` = first view):
   - worktrees (current repo): number, `@`, branch, `*` (uncommitted), agents on the
@@ -312,7 +301,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   rename-replace saves.
 - **Follow edits**: removed (Oct 2026). `link_here()` (Cmd+Shift+H) links an
   agent here after a peek.
-- **Peek**: Alt-Enter in the yard (`keys.yard.alt_activate`) switches but keeps the
+- **Peek**: Shift+Enter in the yard (`keys.yard.alt_activate`) switches but keeps the
   link (and the viewer): `sessions.keep_link_for(dir)` is a one-time hold that `on_arrival`
   consumes; cleared again when the switch is blocked.
 - **Switching from any window**: `projects.switch` starts from a fresh window

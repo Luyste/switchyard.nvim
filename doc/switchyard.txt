@@ -64,8 +64,6 @@ The link ~
   box, any other one can be added (|switchyard-config-agents|). No agent
   extensions are needed.
 
-- fzf-lua (https://github.com/ibhagwan/fzf-lua) and fzf: the yard is an
-  fzf-lua picker.
 - fd: finds the projects (`%` in the yard).
 
 Run `:checkhealth switchyard` to see what is found (|switchyard-health|).
@@ -130,66 +128,90 @@ name ever changes.
 ==============================================================================
 5. THE YARD                                                  *switchyard-yard*
 
-Open it with |switchyard.open_yard()| or |:Switchyard|: one fzf-lua picker
-with three views. Type a prefix first to choose one; without a prefix you
-get |switchyard-config-yard.view|. `%sho` searches the projects for "sho".
+Open it with |switchyard.open_yard()| or |:Switchyard|. It opens in normal
+mode on the current worktree (or the linked agent, or the current project).
+The first view is set by |switchyard-config-yard.view|. <Tab> cycles the
+views.
 
 Views ~
                                                    *switchyard-yard-worktrees*
-& worktrees      Every worktree of the repository. `@` marks the current
+Worktrees view   Every worktree of the repository. `@` marks the current
                  one, `● <name>` (green) the worktree of the linked agent
                  (the one your prompts go to), `● n` the number of agents
                  in a worktree. Outside a repository: the folder itself.
-                 Preview: `git status` and recent commits.
                                                       *switchyard-yard-agents*
-* agents         Every agent of the repository, with its worktree. `●`
-                 marks the linked agent. Preview: the agent's screen.
+Agents view      Every agent of the repository, with its worktree. `●`
+                 marks the linked agent.
                                                     *switchyard-yard-projects*
-% projects       The current project, pinned folders, projects with agents
+Projects view    The current project, pinned folders, projects with agents
                  (`● n`), recent ones, then every git repository `fd` finds
                  under the roots (|switchyard-config-projects|). The last
                  scan is cached, so the list shows at once.
 
 Keys ~
                                                         *switchyard-yard-keys*
-The names in brackets are the entries of |switchyard-config-keys|. Plain
-letters type into the search, so actions use Alt (macOS: Option as Meta).
-Keys act on the kind of row under the cursor.
+The names in brackets are the entries of |switchyard-config-keys|.
 
-Key         Worktree                      Agent ~
+Key         Worktrees view                Agents view ~
 <CR>        switch the editor there       go to: switch to its worktree
  (activate)                               and link it
-<M-CR>      peek: switch, keep the link   link it, stay where you are
- (alt_activate) and the viewer            (the picker stays open)
-<M-n> (new) new worktree                  new agent in a worktree
-<M-d>       dispatch a task               dispatch a task
+1-9         same as <CR> for that row     same as <CR> for that row
+<S-CR>      peek: switch, keep the link   link it, stay where you are
+ (alt_activate) and the viewer
+<Tab>       agents view                   projects view
+ (toggle_view)
+n (new)     new worktree                  new agent in a worktree
+N           dispatch a task               dispatch a task
  (dispatch)
-<C-x>       remove the worktree (choose   stop the agent
- (remove)   to keep or stop its agents)
-<M-f> (fork) fork the linked agent into   fork this agent into another
+D (remove)  remove the worktree (choose   stop the agent
+            to keep or stop its agents)
+f (fork)    fork the linked agent into    fork this agent into another
             this worktree                 (or a new) worktree
-<M-a>       start a new agent here
+a           start a new agent here
  (start_agent)
-<M-c>       continue an earlier session
+c           continue an earlier session
  (continue_agent) here (a list, newest first;
             running ones left out)
-<M-y>       copy the path
+y           copy the path
  (copy_path)
-<M-v> (view)                              show it in the viewer split
-<M-g>                                     open it in an external terminal
+v (view)                                  show it in the viewer split
+g                                         open it in an external terminal
  (external)
-<M-s> (send)                              write a prompt for this agent
-<M-r> (rename)                            rename its tmux session
+s (send)                                  write a prompt for this agent
+r (rename)                                rename its tmux session
+/ (filter)  fuzzy filter                  fuzzy filter
+. (actions) menu with this row's actions  same
+? (help)    every key of this view        same
 <C-r>       refresh                       same
  (refresh)
-<F1>        every key                     same
+q (close),  close the yard                same
+<Esc>
 
-On a project: <CR> switches to it (its main worktree), <M-CR> peeks, <M-a>
-starts an agent there (the editor stays), <M-y> copies the path.
+In the projects view: <CR> switches to the project (its main worktree),
+<S-CR> peeks, `a` starts an agent there (the editor stays), `y` copies the
+path, <Tab> goes back to the worktrees view.
+
+<C-n>/<C-p> and j/k move the selection.
 
 Actions that remove or stop something ask for confirmation (the picker
 closes for the question and comes back after). With several agents
 installed, starting an agent asks which one.
+
+Filtering ~
+                                                      *switchyard-yard-filter*
+`/` opens an input line above the list. Typing filters the list fuzzily
+(Neovim's |matchfuzzypos()|): the letters you type, in order, not
+necessarily next to each other ("flf" finds "feature/login-form"). The best
+matches come first; the matched letters are highlighted. In the input:
+
+    <CR>          activate the selected row
+    <S-CR>        alternate action (peek / link only)
+    <C-n>, <Down> next row
+    <C-p>, <Up>   previous row
+    <Tab>         next view
+    <Esc>, <C-c>  stop filtering, back to the list
+
+The yard closes when you move to a normal (non-floating) window.
 
 ==============================================================================
 6. LINKING, FOLLOWING AND PEEKING                         *switchyard-linking*
@@ -221,7 +243,7 @@ servers. It refuses when a buffer has unsaved changes.
 
 Peeking ~
                                                              *switchyard-peek*
-Peek (<M-CR> on a worktree or project, also a folder outside git) switches
+Peek (<S-CR> on a worktree or project, also a folder outside git) switches
 the editor without touching the link or the viewer: look around in worktree
 B, copy a snippet, and send it to your agent in A. Changed your mind? |switchyard.link_here()| links an agent of the
 worktree you are in.
@@ -313,9 +335,8 @@ access), so they are cheap to call on every redraw: >lua
     -- "DRAFT" or "DRAFT 2" while a prompt draft waits
     require("switchyard").draft_status()
 <
-The yard and switchyard's questions (which agent, which worktree, branch
-name, confirm) are fzf-lua windows ('filetype' "fzf"). The prompt builder
-has 'filetype' "switchyard", so a statusline can recognise it.
+The yard, its menus and the prompt builder have 'filetype' "switchyard",
+so a statusline can recognise them.
 
 ==============================================================================
 12. FUNCTIONS                                                 *switchyard-api*
@@ -394,7 +415,6 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       live_reload = true,
       yard = {
         view = "worktrees",
-        prefixes = { worktrees = "&", agents = "*", projects = "%" },
       },
       projects = {
         roots = { "~" },
@@ -407,12 +427,12 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       },
       keys = {
         yard = {
-          activate = "enter", alt_activate = "alt-enter",
-          refresh = "ctrl-r", new = "alt-n",
-          remove = "ctrl-x", fork = "alt-f", dispatch = "alt-d",
-          start_agent = "alt-a", continue_agent = "alt-c",
-          copy_path = "alt-y", view = "alt-v", external = "alt-g",
-          rename = "alt-r", send = "alt-s",
+          activate = "<CR>", alt_activate = "<S-CR>",
+          toggle_view = "<Tab>", filter = "/", refresh = "<C-r>",
+          close = "q", actions = ".", help = "?",
+          new = "n", remove = "D", fork = "f", dispatch = "N",
+          start_agent = "a", continue_agent = "c", copy_path = "y",
+          view = "v", external = "g", rename = "r", send = "s",
         },
       },
     })
@@ -474,17 +494,11 @@ live_reload ~
                                                  *switchyard-config-yard.view*
 yard.view ~
     Default: `"worktrees"`
-    The view without a prefix: "worktrees", "agents" or "projects".
-
-                                             *switchyard-config-yard.prefixes*
-yard.prefixes ~
-    Default: `{ worktrees = "&", agents = "*", projects = "%" }`
-    Typed first in the yard's search, a prefix shows that view. Avoid fzf's
-    own search characters (^ $ ' ! |).
+    The view the yard opens in first: "worktrees", "agents" or "projects".
 
                                                   *switchyard-config-projects*
 projects ~
-    The projects view (`%`). Lists are replaced, not merged.
+    The yard's projects view. Lists are replaced, not merged.
       roots     where `fd` looks for git repositories. Default: `{ "~" }`
       exclude   folder names or paths `fd` skips (passed as --exclude)
       pinned    folders always listed, git or not, e.g. a config folder
@@ -499,24 +513,29 @@ viewer.width ~
 
                                                       *switchyard-config-keys*
 keys.yard ~
-    Keys inside the yard, as fzf key names. See |switchyard-yard-keys| for
-    what each one does in each view.
+    Buffer-local keys inside the yard. See |switchyard-yard-keys| for what
+    each one does in each view.
 
-    Name            Default     Worktrees view / agents view ~
-    activate        enter       switch / go to (switch and link)
-    alt_activate    alt-enter   peek / link only
-    refresh         ctrl-r      refresh
-    new             alt-n       new worktree / new agent in a worktree
-    remove          ctrl-x      remove worktree / stop agent
-    fork            alt-f       fork the linked agent here / fork this one
-    dispatch        alt-d       dispatch a task
-    start_agent     alt-a       start an agent here (worktrees)
-    continue_agent  alt-c       continue an earlier session here (worktrees)
-    copy_path       alt-y       copy the path (worktrees)
-    view            alt-v       show in the viewer (agents)
-    external        alt-g       open in an external terminal (agents)
-    rename          alt-r       rename the tmux session (agents)
-    send            alt-s       write a prompt for it (agents)
+    Name            Default   Worktrees view / agents view ~
+    activate        <CR>      switch / go to (switch and link)
+    alt_activate    <S-CR>    peek / link only
+    toggle_view     <Tab>     switch between the views
+    filter          /         filter the list
+    refresh         <C-r>     refresh
+    close           q         close the yard
+    actions         .         menu with the row's actions
+    help            ?         every key of the view
+    new             n         new worktree / new agent in a worktree
+    remove          D         remove worktree / stop agent
+    fork            f         fork the linked agent here / fork this one
+    dispatch        N         dispatch a task
+    start_agent     a         start an agent here (worktrees)
+    continue_agent  c         continue an earlier session here (worktrees)
+    copy_path       y         copy the path (worktrees)
+    view            v         show in the viewer (agents)
+    external        g         open in an external terminal (agents)
+    rename          r         rename the tmux session (agents)
+    send            s         write a prompt for it (agents)
 
 ==============================================================================
 14. COMMANDS                                             *switchyard-commands*
