@@ -2,14 +2,15 @@
 
 This file brings you up to date on switchyard.nvim, a Neovim plugin I've been
 designing and building step by step in a chat. Read it fully before changing
-anything, then **inspect the actual code**.
+anything, then **inspect the actual code**: some items below are marked
+"verify", because I'm not sure every suggested change was applied.
 
 ## How I want to work
 
 - I'm learning Neovim plugin development while building this. Explain **what**
   you change and **why** (the Neovim/Lua concept behind it), briefly.
 - Small steps, each testable. Tell me how to test each step in Neovide.
-- Plain Lua, Neovim 0.12+, no plugin dependencies.
+- Plain Lua, Neovim 0.12+, no plugin dependencies (fzf-lua is optional).
 - When something breaks, find the root cause before patching.
 
 ## My setup
@@ -17,116 +18,386 @@ anything, then **inspect the actual code**.
 - macOS, **Neovide** as the editor (GPU Neovim GUI), Ghostty as terminal, zsh +
   Oh My Zsh. Neovim config in `~/.config/nvim` (Lua, `vim.pack` plugin manager,
   one file per plugin under `lua/plugins/`), managed in a bare dotfiles repo.
-- Agents: **pi** at work, **Claude Code** at home, run through
-  **sidekick.nvim** (`lua/plugins/sidekick.lua`: tmux backend,
-  `create = "terminal"`). tmux: one server, `status off`.
-- Git worktrees: plain `git worktree`.
+- Agents: **pi** (pi coding agent) at work, **Claude Code** at home.
+- Git worktrees: plain `git worktree` (switchyard no longer uses worktrunk or
+  pi-nvim; see "Agents through tmux" below).
+- Agents run inside **tmux** sessions (one tmux server; `.tmux.conf` has
+  `mouse on`, `window-size latest`, `escape-time 10`, `status off`).
 - Plugin repo checkout: `~/personal/projects/switchyard.nvim/` (loaded via
   runtimepath from my config when present, else `vim.pack` from GitHub
-  `Luyste/switchyard.nvim`). Inside Neovim the plugin is `switchyard`
-  (`require("switchyard")`, `:Switchyard`).
+  `Luyste/switchyard.nvim`). The repo was renamed from `switchyard`: that name
+  (repo and folder) now belongs to a separate Rust program. Inside Neovim the
+  plugin is still `switchyard` (`require("switchyard")`, `:Switchyard`).
 - My config loads it in `~/.config/nvim/lua/plugins/switchyard.lua`:
-  `setup({})`, a `User SwitchyardSwitched` autocmd that opens nvim-tree (inside
-  `vim.schedule`) and `wincmd p`, and keymaps via a helper `sy(fn)` (function
-  form, so a missing name never breaks startup). `<D-Y>` = open_yard (I also
-  want Cmd+Shift+S). The other old keymaps (toggle_view, focus_view,
-  open_external, link_here, follow_edits) point at removed functions.
-- My statusline (`lua/config/statusline.lua`, global, `laststatus=3`) shows a
-  YARD badge for filetype `switchyard`; its `pcall(require("switchyard").status)`
-  now finds nothing.
+  - `require("switchyard").setup({})`
+  - A `User SwitchyardSwitched` autocmd that opens nvim-tree (inside
+    `vim.schedule`) and `wincmd p`.
+  - Keymaps via a helper `sy(fn)` that returns `function() require("switchyard")[fn]() end`
+    (function form, so a missing name never breaks startup):
+    `<D-Y>` open_yard (n + t; I also want Cmd+Shift+S for the yard), `<D-j>` toggle_view
+    (n + t), `<D-J>` focus_view (n + t: jump between viewer and editor),
+    `<D-O>` open_external, `<D-H>` link_here, `<D-F>` follow_edits (n + t).
+    No terminal-mode escape key: Cmd+Shift+J leaves the viewer (Cmd+Esc never
+    reaches Neovim in Neovide anyway).
+  - My statusline (`lua/config/statusline.lua`) is global (`laststatus=3`):
+    a badge for what has focus (FILE / TREE / AGENT = buffer `switchyard://…` /
+    YARD = filetype `switchyard` / TERM), repo · branch, file or viewed agent,
+    and the linked agent via `pcall(require("switchyard").status)`.
 
-## What switchyard is (since the sidekick scope cut, Oct 2026)
+## What switchyard is
 
-**A worktree and folder switcher.** Agents are sidekick.nvim's job; switchyard
-only moves the editor: between a repo's git worktrees, and between folders
-(projects). Everything agent-related (tmux, agents, linking, viewer, prompt
-builder, dispatch, live reload, follow edits) was removed; it's in git history
-before the `feature/sidekick-scope` branch, and an unfinished "continue earlier
-sessions" feature sits in `git stash` ("continue earlier sessions …").
+**Agents running on worktrees, and an editor that follows them.**
+
+- **Tracks** = git worktrees (`git worktree`, see worktrees.lua).
+- **Trains** = agent sessions (pi / Claude Code), each living in a tmux session.
+- **The yard** = one screen in Neovim to switch worktrees and manage agents.
+- The editor is **linked** to one agent session; it sends prompts to it and
+  **follows** it when that agent moves to another worktree.
 
 ## Conventions (decided, don't change without asking)
 
-- **Switching must never be interrupted.** No prompts on switch. Unsaved
-  changes → refuse with a message.
-- **Switch = fresh editor in the new folder:** `botright new` + `only`, delete
-  file buffers, stop LSP clients, `cd`, fire `User SwitchyardSwitched`.
-  `User SwitchyardSwitching` fires before any window closes (integrations note
-  what was open).
-- **The yard** = one float, two views, Tab toggles:
-  - worktrees: the worktrees of `state.repo` (the editor's folder at open).
-  - folders: the folders of `state.dir` (at open: the folder around the repo).
-    `l` = look inside (repo → its worktrees view), `h` = up (worktrees view →
-    folders around the repo). Dot folders and linked worktrees (`.git` is a
-    file) are hidden; repos marked `git`.
-  - Title: `switchyard · <view>`, plus the location only when it's not the
-    editor's own repo (folders: the path; worktrees of another repo: its name).
-- **Dependencies:** hard dependencies are programs only (git). Every plugin
-  integration is optional, lives in `lua/switchyard/integrations/<name>.lua`
-  (`available()`, `setup()`), is listed in `integrations.names`, can be turned
-  off with `config.integrations.<name> = false`, and is reported by the health
-  check. Integrations use the plugin's public API or plain Neovim facts
-  (filetypes) where possible.
+- **Switching is the primary action and must never be interrupted.** No prompts
+  on switch.
+- **Agents live in a worktree.** The agent leads, the editor follows: when the
+  _linked_ agent moves worktree, the editor switches there. Switching the editor
+  alone never moves an agent (that's "peeking").
+- **Arrival rules** (on `VimEnter` / `DirChanged global`):
+  - exactly one agent in the new folder → link to it silently;
+  - no agent → **keep the current link** (config `empty_worktree = "keep"`;
+    `"unlink"` also exists; `"ask"` was removed: the yard covers it). Keeping the link enables "peek into
+    worktree C, copy a snippet, send it to the orchestrator in worktree A";
+  - several agents → keep the link if it's already one of them; otherwise link
+    the one the viewer showed last, else the most recently started (no prompt:
+    Enter moves the link along, Shift+Enter/peek keeps it).
+  - Arriving after a switch with the viewer open: the viewer comes back, showing
+    the linked agent (`view.sync(true)`), without taking focus.
+- **Enter vs Shift+Enter in the yard (worktree switching):**
+  - Enter = **switch**: the editor goes to the worktree and the arrival rules
+    apply (one agent there → the link moves to it).
+  - Shift+Enter = **peek**: the editor goes to the worktree but the link stays
+    on the current agent, whatever the worktree contains (statusline shows
+    `agent (in <other worktree>)`). Used to grab context from B and send it to
+    agent A (with the prompt builder's cross-worktree paths).
+- **Two yard views, one meaning per key:** keys act on what the current view
+  shows (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
+  Enter in the agents view = "go to" (switch + link); Shift+Enter = link only.
+- **Prompt builder = chat convention:** Enter sends, Shift+Enter is a new line.
+- **Dispatch** (fire-and-forget): describe a task → new worktree + agent started
+  there with the task as its first message. The editor does NOT switch and the
+  link does NOT change; the new worktree + working agent simply appear in the yard.
+- **Starting an agent in the editor's current folder links to it.** Starting in
+  another worktree does not link (just a message).
+- **Viewing ≠ linking.** The viewer can show any agent; the link decides where
+  prompts go.
+- **Agents through tmux:** switchyard knows agents only as CLI programs in tmux
+  panes. Finding: snapshot of `tmux list-panes -a` + `ps` (snapshot.lua), the
+  first configured agent walking down each pane's process tree. Sending:
+  bracketed paste + Enter into the pane. Following: the pane's
+  `pane_current_path` (the agent's real working directory). No agent
+  extensions (pi-nvim is gone), no sockets, no registries.
+- **Dependencies:** hard dependencies are PROGRAMS only (git, tmux, the
+  agents; reported by the health check). switchyard never requires another
+  Neovim plugin. Every plugin integration is optional (`pcall(require, …)`),
+  lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
+  simply not offered, and is reported by the health check. Pluggable features
+  follow the `terminal` pattern: `"auto" | <name> | function(...)`.
+- **One project per yard.** The yard shows the current repo's worktrees and
+  agents; for another repo you step out (no project switching in the plugin).
 - **Window style:** titles and key hints never go in the border (Neovide
   draws them over the border line). Title = the float's winbar
   (`ui.title(win, chunks)`), hints = a virtual line below the last line
-  (`ui.hints(buf, text)`).
+  (`ui.hints(buf, text)`); both add a line to the window's height.
 - **Questions in switchyard's own style:** choices via `menu.open`, text via
-  `menu.input`. Never `vim.ui.select` / `vim.ui.input`.
-- **Plugin has no default global keymaps.** Buffer-local keys inside plugin
-  windows are fine and configurable via `config.keys`.
+  `menu.input` (a small float below the yard when opened from it; ⏎ confirm,
+  Esc cancels, clicking elsewhere cancels). Never `vim.ui.select` /
+  `vim.ui.input` (those end up at the bottom of the screen).
+- **Plugin has no default global keymaps.** It exposes functions/commands; my
+  config maps keys. Buffer-local keys inside plugin windows are fine and
+  configurable via `config.keys`.
 - **Async everywhere**: shell out via `util.run` (vim.system + vim.schedule).
-  Only the health check may `:wait()`. Reading a folder (`vim.fs.dir`) is fine
-  synchronously.
-- **Messages**: progress → `util.progress` (no history); results and errors →
-  `vim.notify`. `redraw` before notifying in layout-changing code.
+  Only the health check may `:wait()`.
+- **Messages**: progress → `nvim_echo(…, false, {})` (no history); results and
+  errors → `vim.notify`. Anything that changes layout calls `vim.cmd("redraw")`
+  before notifying (avoids "Press ENTER" prompts that break window changes).
 - **Callbacks from menus that touch windows are `vim.schedule`d.**
-- Terminal-agnostic, OS-agnostic where possible (repo is public).
+- Terminal-agnostic, OS-agnostic where possible (repo will be public).
 
-## Module map
+## Module map (as designed; verify against code)
 
 ```
-plugin/switchyard.lua        :Switchyard → yard; :Switchyard <folder> → switch (dir completion)
+plugin/switchyard.lua        :Switchyard → open the yard (guarded by vim.g.loaded_switchyard)
 lua/switchyard/
-  init.lua                   setup(opts), switch(dir), open_yard()
-  config.lua                 defaults (yard.view, integrations, keys.yard) + setup
-  health.lua                 git; integrations (active / not installed / disabled)
-  util.lua                   run(cmd, {cwd, stdin}, cb(ok, stdout, stderr)); progress(text)
-  worktrees.lua              parse(porcelain), list(cwd, cb), create(cwd, branch, cb),
-                             remove(cwd, wt, cb) (+ `git branch -d`, merged only)
-  projects.lua               switch(dir): refuse on unsaved, SwitchyardSwitching, tabonly +
-                             botright new + only, delete file buffers, stop LSP, cd,
-                             notify, SwitchyardSwitched {from, to}
-  actions.lua                confirm, create_worktree(cwd, on_done), remove_worktree(cwd,
-                             wt, on_done) (refuses current/main)
-  ui.lua                     highlights (linked, default=true), hide/show cursor,
-                             title(win, chunks), hints(buf, text)
-  menu.lua                   yard-style menu (numbered, key/danger, 1-9); menu.input
-  yard.lua                   the yard (worktrees + folders views, filter, `.`/`?` menus
-                             built from one `actions` table per view)
-  integrations/init.lua      names, active(name), setup()
-  integrations/sidekick.lua  remembers on SwitchyardSwitching whether a window with
-                             filetype `sidekick_terminal` was open; after the switch
-                             (scheduled) shows sidekick's agent for the new cwd via
-                             `require("sidekick.cli").show({ filter = { cwd = true,
-                             started = true }, focus = false })` when
-                             `sidekick.cli.state.get` finds one
+  init.lua                   setup(opts) → config, sessions, live; public API:
+                             switch, follow_edits, following_edits, prompt, dispatch,
+                             prompt_line, draft_status, link_here, status, open_yard,
+                             toggle_view, focus_view, open_external
+  config.lua                 defaults + setup (no unknown-option warning yet; lists replaced
+                             not merged)
+  health.lua                 :checkhealth switchyard — programs (git, tmux), external
+                             terminal, follow edits, agents (installed, running)
+  util.lua                   run(cmd, {cwd, stdin}, cb(ok, stdout, stderr)) — async;
+                             progress(text) (echo cut to v:echospace)
+  worktrees.lua              plain git: parse(porcelain), list(cwd, cb) →
+                             {branch, path, current, main, symbols ("*" = uncommitted)};
+                             create(cwd, branch, cb(path)) → "<repo>.<branch>" next to the
+                             main worktree: existing/remote branch = `git worktree add
+                             <path> <branch>`, new = `-b <branch> <path> <default branch>`,
+                             already checked out = its path; remove(cwd, wt, cb) =
+                             `git worktree remove` + `git branch -d` (merged only)
+  projects.lua               switch(dir): refuse on unsaved, tabonly/only/enew, delete
+                             file buffers (buftype==""), stop LSP clients, cd, redraw,
+                             notify, fire User SwitchyardSwitched {from,to};
+  tmux.lua                   list, free_name, new(name, cwd, cmd, cb(pane_id)),
+                             paste(pane, text, cb) (bracketed), submit(pane, text, cb)
+                             (paste + 50 ms + Enter), rename, kill, attach_cmd
+  agents.lua                 agent tables {name, cmd, continue?, task?, fork?, match?};
+                             presets pi / claude / codex (pi fork = --fork <newest
+                             ~/.pi/agent/sessions file>, claude fork = --resume <id from
+                             ~/.claude/sessions/<pid>.json> --fork-session; the fork note
+                             is the copy's first message); configured(), installed(),
+                             task_cmd(agent, task)
+  snapshot.lua               parse(panes, ps, agents) → sessions {agent, pid, pane, tmux,
+                             cwd, started}; take(agents, cb) runs tmux + ps side by side
+  sessions.lua               cache of the last snapshot: all, in_folder, linked,
+                             linked_pid, link(session, quiet), status, name (= tmux),
+                             describe, send (waits until the tmux session is 4 s old,
+                             then tmux.submit); update(list) (fires
+                             SwitchyardSessionsChanged only on a change, refreshes the
+                             link, follows a MOVED linked agent: `seen_cwd`/`follow_to`,
+                             retried on BufWritePost); refresh(cb) (one snapshot at a
+                             time); arrival rules on VimEnter/DirChanged after a fresh
+                             snapshot; 2 s timer
+  actions.lua                confirm(title, yes_label, fn) (menu, "No" first),
+                             with_agent(cb) (asks when several are installed),
+                             create_worktree(cwd, on_done(path)), remove_worktree(cwd,
+                             wt, on_done, agents) (refuses current/main),
+                             stop_agent(session, on_done) (tmux kill-session)
+  launch.lua                 start(agent, cmd, label, cwd?, cb)/new/continue/fork —
+                             tmux.new gives the pane; wait until an agent runs in THAT
+                             pane (refresh every 500 ms, 30 s), then link only if it runs
+                             where the editor is (checked then), else "started <name>"
+  ui.lua                     shared highlights (linked to standard groups, default=true)
+                             + hide/show cursor (guicursor → blended hl), one shared save;
+                             badge text color picked by WCAG contrast (Normal fg vs bg)
+  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
+                             used for every choice; menu.input for text
+  live.lua                   live reload: one fs_event per folder of loaded file buffers
+                             (refcounted), debounced checktime, skips modified buffers;
+                             follow edits (recursive watcher, see Status)
+  yard.lua                   the yard (part 1 done, see below); close() returns to
+                             the window it was opened from
+  view.lua                   the viewer (split + statusline with agent tabs, cycle,
+                             external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
-                             (menu, worktrees, yard: open/close + folders navigation in a
-                             temp repo)
+                             (live: live reload + follow edits; arrival: arrival rules + peek;
+                             launch: linking after a start; yard: open/close;
+                             view: showing/hiding, also as the last window)
 ```
 
 ## Status
 
-Done: worktrees view (switch, new, remove, copy path, filter), folders view
-(switch, look inside, up), `:Switchyard <folder>`, sidekick integration
-(untested against a real sidekick agent window).
+### Done and working
 
-Next / ideas:
-- Test the sidekick hand-over in Neovide with agents in two worktrees.
-- Choosing the base branch for a new worktree.
-- Worktree rows could show the diff size vs the default branch.
-- `config.setup` has no unknown-option warning.
-- Re-record the README GIF (the old demos were removed with the agent code).
+- Health check, config, git worktrees list/create/remove, project + worktree
+  switching (with the nvim-tree User event in my config).
+- Agents through tmux (pi, Claude Code, codex presets; own agents in config):
+  found, started, forked, sent to and followed without agent extensions.
+- Linking, arrival rules, following (move-only), tmux names in statusline.
+- Launching agents in tmux (new/continue/fork) from `start_agent`.
+- **Compact yard** (replaced part 1): one float sized to its content (width
+  50..90, height ≤ 60% of lines), centered, opens in normal mode. Two views,
+  Tab toggles, remembered while Neovim runs (`yard.view` = first view):
+  - worktrees (current repo): number, `@`, branch, `*` (uncommitted), agents on the
+    right (`● linked +n` / `● n`);
+  - agents (this repo only: one project per yard): number, `●` + tmux name,
+    branch on the right; linked first, then by worktree. Agents whose folder is
+    gone (kept after "remove worktree") show as "removed worktree".
+  - Keys (`keys.yard`): Enter (worktree: switch · agent: go to = switch + link),
+    Shift+Enter (worktree: peek · agent: link only, yard stays), `1`–`9` = Enter
+    on row n, j/k and Ctrl-N/P, Tab, `/` filter (a 1-line float above the list
+    only while filtering; Enter acts, Esc clears and removes it), Ctrl-R
+    refresh, `q`/Esc close. Footer hints per view.
+  - One action list per view in yard.lua (`actions`: key name in `keys.yard`,
+    label, run(row), danger, any_row). Keymaps, the `.` menu (the row's
+    actions) and `?` (all keys of the view) are built from it: a new action
+    shows up everywhere. `a`/`c` ask which agent only when several are
+    installed. menu.lua returns focus to the window it was opened from.
+    Menus opened from a float sit below it (above when there's no room);
+    worktree choices end with "new worktree…".
+  - No "move" action: linking only changes where the editor's prompts go;
+    moving an agent = `f` fork into a worktree (or "new worktree…") + optionally
+    `D` on the original. A real move isn't generic (pi-worktrunk has a
+    `worktrunk` tool but no switch command; Claude Code's plugin only has
+    `/wt-switch-create`; pi-nvim delivers socket messages as user messages, not
+    slash commands). Claude Code's own `EnterWorktree` does move its process:
+    that's followed through tmux.
+  - Kept: highlights, selection per view by row key, cursor hidden + column
+    locked, closes when focus goes to a normal window, returns to the origin
+    window, redraws on SwitchyardSessionsChanged / VimResized.
+- **Viewer**: Cmd+J toggles a right split (`botright vsplit`, width
+  `config.viewer.width`) with a terminal running `tmux attach -t =name`; reused
+  window; hidden buffer kept; BufEnter → startinsert; TermClose →
+  cleanup. Toggle rules: viewer open → hide; else linked agent if in tmux; else
+  agents in this worktree that run in tmux (one → show, several → choose,
+  none → warn). External terminal: `config.terminal = "auto" | name | function(cmd)`,
+  built-ins ghostty/kitty/wezterm/alacritty/terminal.app (macOS `open -na`).
+  - Own **winbar** (works with my global statusline, `laststatus=3`; set AFTER
+    the terminal buffer is in the window: window-local options only stick to the
+    buffer they were set with): agent tabs (`viewable()` → cached `viewer.list`,
+    linked first, `●` = linked, refreshed on SwitchyardSessionsChanged /
+    DirChanged); a NORMAL badge only as a warning when the focused viewer is
+    not in terminal mode.
+  - The viewer is only for typing to the agent: no buffer-local keys, no
+    cycling (removed). Choosing which agent to see happens in the yard.
+    `focus_view()` jumps between viewer and editor (stopinsert + previous window).
+- **Badge contrast**: text color = the theme's light or dark color, whichever
+  contrasts more with the badge background.
+- **Live reload** (`live_reload = true`): open files follow the agent's edits,
+  also while in terminal mode. Folder watchers (see live.lua) also catch
+  rename-replace saves.
+- **Follow edits** (`follow_edits(on?)`, `following_edits()`, `:Switchyard
+  follow-edits`, mapped Cmd+Shift+F; FOLLOW badge in my statusline): recursive
+  fs_event on the worktree (macOS/Windows only), `.git/` dropped, 150 ms debounce,
+  one `git check-ignore --stdin`, latest file shown in the editor window without
+  focus; cursor on the first changed line via `vim.diff` against live reload's
+  snapshot / the loaded buffer / `git show :./path`. Never replaces a modified
+  buffer. Moves along on DirChanged. `link_here()` (Cmd+Shift+H) links an agent
+  here after a peek.
+- **Peek**: Shift+Enter in the yard (`keys.yard.peek`) switches but keeps the
+  link: `sessions.keep_link_for(dir)` is a one-time hold that `on_arrival`
+  consumes; cleared again when the switch is blocked.
+- **Switching from any window**: `projects.switch` starts from a fresh window
+  (`botright new` + `only`), so switching while focus is in the tree, the viewer
+  or a float no longer eats the tree window.
+- Checked: `tmux.new` cds inside the shell line; `menu.lua` used by
+  `launch.pick` and the viewer's choice; `ui.lua` used by yard.lua; config has
+  `viewer.width`, `terminal`, `empty_worktree`, `live_reload`.
+
+### Open (small)
+
+- `config.setup` has no unknown-option warning yet.
+
+### Next steps (in this order)
+
+1. **Yard part 2 — actions per view** (done: worktrees `n` `D` `a` `c` `f` `y`;
+   agents `v` `g` `n` `f` `r` `D`; no `m`, see "No move action"; no `p`: one
+   project per yard, for another repo you step out of the plugin;
+   `N`/`F` come with dispatch, `s` with the prompt builder) (row under cursor is the subject;
+   destructive actions confirm; every key configurable in `keys.yard`):
+   | Key                             | Worktrees view                           | Agents view                                                                           |
+   | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------- |
+   | Enter                           | switch (arrival rules: link moves along) | **go to**: switch to its worktree + link                                              |
+   | Shift+Enter                     | peek (keep link)                         | link only, stay where you are                                                         |
+   | `n`                             | new worktree                             | new agent (menu: worktree, current preselected; last item "new worktree…" = dispatch) |
+   | `N`                             | dispatch (new worktree + agent + task)   | dispatch                                                                              |
+   | `D`                             | remove worktree                          | stop agent (tmux kill-session)                                                        |
+   | `a`                             | start agent in this worktree             | —                                                                                     |
+   | `c`                             | continue last agent session here         | —                                                                                     |
+   | `f`                             | fork the linked agent into this worktree | fork this agent (menu: which worktree)                                                |
+   | `F`                             | —                                        | spin off: new worktree + fork this agent into it                                      |
+   | `v` / `g`                       | —                                        | view in split / external terminal                                                     |
+   | `s`                             | —                                        | prompt builder aimed at this agent                                                    |
+   | `r`                             | —                                        | rename tmux session (update the name cache)                                           |
+   | `y`                             | copy path                                | —                                                                                     |
+   | Tab                             | agents view                              | worktrees view                                                                        |
+   | `1`–`9`, `/`, `?`, `.`, `q`/Esc | same in both                             | same in both                                                                          |
+   - With several agents installed, ask which one (menu); with one, use it.
+   - Later: agent state (working / waiting); Claude Code has it in
+     ~/.claude/sessions/<pid>.json (`status`), pi has no generic source; was: pi-worktrunk's `wt list`
+     markers; lock marker for locked worktrees.
+2. **Dispatch** — done as the prompt builder's target (see step 3). Original notes:
+
+- Adapter gets `task_cmd(prompt)`: pi → `{ "pi", prompt }` (pi takes
+  positional messages: `pi [options] [--] [@files...] [messages...]`),
+  claude → `{ "claude", prompt }` (interactive session with an opening prompt).
+- UI: a yard-style floating Markdown buffer for the task (multi-line). Branch
+  name suggested from the first line (slug, e.g. `feature/add-dark-mode`),
+  editable before confirming. Base = default branch; one key toggles "branch
+  off the current worktree" → `wt switch --create <b> --base=@ --no-cd --yes`.
+- Flow: create worktree (worktrunk.create, extend with optional base) →
+  `launch.start(adapter, adapter.task_cmd(prompt), label, new_path)` (not the
+  editor's cwd → no link, no switch) → yard refreshes via
+  SwitchyardSessionsChanged (+ `refresh()` for the new worktree).
+- Visual-mode dispatch includes the selection as context with ABSOLUTE path +
+  `(worktree <branch>)` (cross-worktree rule).
+- Keys: yard `N` (`keys.yard.dispatch = "N"`), public `dispatch()` for a
+  global key (I'll map Cmd+Shift+D in n + x mode).
+- Spin-off (`F`) = same flow but `fork_cmd(source)` instead of `task_cmd`.
+
+3. **Prompt builder** — part 1 done (prompt.lua: one float, target in the
+   title, grows with wrapped text up to 8 lines, Enter sends / Shift+Enter or
+   Ctrl-J new line, Esc = normal mode, q/Esc in normal = close, Ctrl-X clear;
+   draft = one hidden buffer that survives closing; the window **disappears on
+   focus loss**, my statusline shows DRAFT via `draft_status()`; Cmd+L opens).
+   Part 2 done: contexts (Visual Cmd+L via `prompt()` in visual mode, Cmd+Shift+L
+   `prompt_line()` = line + diagnostics; snapshot of the lines at add time; a
+   non-focusable list above the input, one line per context; ranges highlighted
+   (Visual) while open; Ctrl-F = the file it was opened from, as a path
+   (`File: <path>`, the agent reads it); Ctrl-D = menu to remove one, Ctrl-X clears all; sent as
+   `From <path>:<a>-<b>:` + fenced code (+ `- SEVERITY: message`), paths
+   relative to the target's folder when inside it, else absolute). DRAFT n in
+   the statusline. The builder stays open when a switchyard menu takes focus.
+   Part 3 done: Ctrl-T = menu of this repo's agents, the prompt goes there
+   (link unchanged; back to the linked agent after sending); yard `s` =
+   `prompt.open_for(session)`; title `→ name (linked) (in <wt>)`, target looked
+   up on open/choose only (not per keystroke); Ctrl-O hand-over =
+   `tmux.paste` (load-buffer from stdin + paste-buffer -p, no Enter) into the
+   agent's input, then the viewer shows it. Cross-worktree paths are absolute
+   (no "(worktree <branch>)" suffix yet).
+   Part 4 done: dispatch = the builder's "new worktree + agent" target
+   (Ctrl-T item, yard `N` in both views, public `dispatch()` also in visual
+   mode, Cmd+Shift+D). Enter asks for the branch (suggested: slug of the first
+   line), creates it with git (base: the default branch), starts the
+   agent there via `agents.task_cmd(agent, task)` (`cmd` + task); no link,
+   no switch. Not done: choosing the base (current worktree instead of default).
+   Spin-off = `f` in the agents view → "new worktree…".
+   as the "new worktree" target (`N`, `dispatch()`). Original design notes:
+   (compact, chat-style; NOT via the yard). Inspired by
+    pi-nvim's dialog (two stacked bubbles, growing input, selection highlighted in
+    the source) but with a persistent draft and multiple contexts:
+
+- **Layout:** two attached floats, accent border.
+  - Header (not focusable): target line `→ <tmux name> (linked)` / `(in <wt>)`,
+    then ONE LINE PER CONTEXT: `internal/router/router.go:12-14 (3 lines)`,
+    `router_test.go:40 + 2 diagnostics`. The code itself is not shown.
+  - Input: starts 1 line, grows with content (wrap-aware) up to ~8 lines,
+    then scrolls. Plain text prompt.
+- While open, every context range is highlighted (Visual) in its source buffer.
+- **Keys (chat convention):** insert mode Enter = **send**, Shift+Enter = new
+  line (configurable: some terminals can't distinguish Shift+Enter; offer
+  `<C-j>` as an alternative newline key). Esc in insert = normal mode
+  (Vim-standard); `q`/Esc in normal = close, **keeping the draft**. Ctrl-O =
+  hand over (paste into the agent's own input via tmux, no submit, open
+  viewer), Ctrl-T = change target (menu), Ctrl-F = add a file path, `dd` on a
+  header line (or Ctrl-X in normal) = remove that context / clear all,
+  `e` = expand the whole draft into a Markdown buffer for editing the code.
+- **Draft:** survives closing and focus loss; cleared after send/hand-over.
+  Visual Cmd+L adds the selection (file, range, filetype, text) and opens;
+  normal Cmd+L opens; Cmd+Shift+L adds the current line + its diagnostics.
+- **Message assembly at send time:** prompt text first, then each context as
+  `From <path>:<a>-<b>:` + fenced code block with filetype (diagnostics as a
+  list). Paths relative to the target agent's worktree when it's the same
+  worktree; otherwise ABSOLUTE + `(worktree <branch>)`.
+- Fork note (currently a separate first message from launch.fork) could move
+  in front of the first real prompt.
+
+4. (Done differently: every agent goes through tmux, see "Agents through
+   tmux"; the separate branch feature/claude-adapter is superseded.)
+    hand-over already works for any agent in tmux.
+5. README, docs, fuzzy matching, polish.
+
+Dropped: a review/diff viewer inside switchyard (a normal git diff plugin covers
+it). Worktree rows may still show the diff size vs the default branch later
+(`default_branch.diff.added/deleted` in the wt list JSON).
+
+## Design references
+
+- Yard mockups (OUTDATED layout: two modes + detail panel; superseded by the
+  compact yard step. Still useful for colors/badges/row content. 6 artboards: filter mode, filter + expanded, normal mode with a
+  worktree selected, with an agent selected, `.` action menu, prompt builder):
+  https://claude.ai/artifact/RyPyrsqwLEGBmypLWLQYcg
+- Workflow doc (conventions, setup overview):
+  https://claude.ai/code/artifact/6047621e-fbd9-44b2-900d-6e0c960d9264
 
 ## Gotchas we already hit (don't reintroduce)
 
@@ -136,23 +407,41 @@ Next / ideas:
   touching the API.
 - Two quick `vim.notify` messages → "Press ENTER" prompt → window changes (like
   opening nvim-tree) get lost. `redraw` before notifying in layout-changing code.
-- `vim.ui.select`-style callbacks fire before the picker closes → schedule.
+- fzf-lua / `vim.ui.select` callbacks fire before the picker closes → schedule.
 - JSON null → use `vim.json.decode(s, { luanil = { object = true, array = true } })`.
+- An agent's program isn't always the pane's process: pi via volta is
+  `node …/bin/pi` with a child `pi`; switchyard starts agents through a shell
+  line that mentions the agent. Match the program (or interpreter + script),
+  never any word on the command line (`grep pi` isn't pi); take the first match
+  walking DOWN from the pane.
+- Claude Code names its process after its version (`2.1.283`): tmux's
+  `pane_current_command` is useless for matching; use `ps` command lines.
+- An agent's process exists before its screen takes input: text pasted right
+  after the start is lost. `sessions.send` waits until the session is 4 s old.
+- While an agent shows a question (permission, Claude's folder trust), a sent
+  Enter answers it (Claude's trust question defaults to "No, exit"): never send
+  on start; fork notes and dispatched tasks go in the start command instead.
+- In zsh, `=name` on the command line expands to a program path; quote tmux
+  targets when testing in a shell (switchyard itself passes args without a shell).
 - `bufhidden = "hide"` for buffers whose windows open/close repeatedly;
   delete them explicitly on close.
 - Measure display width with `vim.fn.strdisplaywidth`, not `#` (bytes).
 - The statusline must never do I/O: use cached values.
 - A message longer than the message line makes Neovim stop at "Press ENTER"
   and swallow the next key: progress goes through `util.progress` (cut to
-  `v:echospace`), notifications stay short.
-- A pending redraw (e.g. the yard closing) wipes a message shown right before
-  it: `redraw` before `vim.notify` in switch paths.
-- `:only` closes every other window (file tree, sidekick's agent window):
-  whoever needs one back reopens it after `SwitchyardSwitched`.
+  `v:echospace`), notifications stay short (no long tmux names or paths).
+- A pending redraw (e.g. the yard closing, insert mode ending) wipes a message
+  shown right before it: `redraw` before `vim.notify` in switch paths.
+- `:only` also closes the viewer: whoever switches must bring it back.
+- The last window can't be hidden or closed (E444): `view.hide()` swaps in an
+  empty buffer when the viewer is the only window left.
 - A `local function f` is only visible BELOW its definition; above it, `f`
-  silently means the global `f` (nil) and fails only when that code runs. Check
-  for accidental globals before committing:
-  `for f in lua/switchyard/*.lua lua/switchyard/integrations/*.lua; do luajit -bl "$f" | grep -oE 'GGET.*"[a-z_]+"' ; done`
+  silently means the global `f` (nil) and fails only when that code runs
+  (hit twice: live.setup, prompt's add_file). Put setup() last, or declare
+  `local f` early. Check for accidental globals before committing:
+  `for f in lua/switchyard/*.lua; do luajit -bl "$f" | grep -oE 'GGET.*"[a-z_]+"' ; done`
   (only vim, require, package and Lua builtins may show up).
 - `ipairs({ a, b })` stops at the first nil: iterate optional values with
-  `pairs` over named keys.
+  `pairs` over named keys (the yard's close left its window open this way).
+- `follow()` must react to a _move_ of the linked agent (compare with the cached
+  cwd), not to "agent is elsewhere", or it hijacks the editor after "keep link".

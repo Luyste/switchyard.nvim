@@ -1,7 +1,6 @@
 -- The yard: one small floating window with two views.
---   worktrees: a repo's worktrees (first: the editor's repo)
---   folders:   the folders around it, repos marked; `l` looks inside a
---              folder (a repo: its worktrees), `h` goes up
+--   worktrees: the current repo's worktrees, with a summary of their agents
+--   agents:    this repo's running agents
 -- Tab switches views; `/` shows a filter line above the list while filtering.
 local ui = require("switchyard.ui")
 
@@ -17,20 +16,20 @@ local state = {
 	buf = nil,
 	input_win = nil, -- the filter line, only while filtering
 	input_buf = nil,
-	repo = nil, -- the folder whose worktrees the worktrees view shows
-	worktrees = nil, -- the last worktrees.list() result for `repo`
+	worktrees = nil, -- the last worktrees.list() result
 	err = nil,
-	dir = nil, -- the folder the folders view shows
-	folders = nil, -- its subfolders: { name, path, repo }
 	rows = {}, -- one entry per list line
 	total = 0, -- rows in this view without the filter
 	filter = "",
-	selected = {}, -- per view: the key (path) of the selected row
+	selected = {}, -- per view: the key of the selected row (path or "pid:<n>")
 	origin = nil, -- the window the yard was opened from
 }
 
 local function keys()
 	return require("switchyard.config").options.keys.yard
+end
+local function sessions()
+	return require("switchyard.sessions")
 end
 local function valid(win)
 	return win ~= nil and vim.api.nvim_win_is_valid(win)
@@ -92,32 +91,55 @@ end
 -- Rows
 ---------------------------------------------------------------------------
 
-local function worktree_rows()
+local function worktree_rows(all)
 	state.total = #(state.worktrees or {})
 	local rows = {}
 	for _, wt in ipairs(state.worktrees or {}) do
-		if state.filter == "" or match(wt.branch) then
-			table.insert(rows, { kind = "worktree", worktree = wt, key = wt.path, path = wt.path })
+		local agents = vim.tbl_filter(function(s)
+			return s.cwd == wt.path
+		end, all)
+		local shown = state.filter == ""
+			or match(wt.branch)
+			or vim.iter(agents):any(function(s)
+				return match(sessions().name(s)) ~= nil
+			end)
+		if shown then
+			table.insert(rows, { kind = "worktree", worktree = wt, agents = agents, key = wt.path, path = wt.path })
 		end
 	end
 	return rows
 end
 
-local function folder_rows()
-	state.total = #(state.folders or {})
+-- This repo's agents: the linked one first, then by worktree. Agents whose
+-- folder is gone (kept running after "remove worktree") are listed too, so
+-- they can still be forked or stopped.
+local function agent_rows(all)
+	local branch_of = {}
+	for _, wt in ipairs(state.worktrees or {}) do
+		branch_of[wt.path] = wt.branch
+	end
+	local mine = vim.tbl_filter(function(s)
+		return branch_of[s.cwd] ~= nil or vim.fn.isdirectory(s.cwd) == 0
+	end, all)
+	local linked = sessions().linked_pid()
+	table.sort(mine, function(a, b)
+		if (a.pid == linked) ~= (b.pid == linked) then
+			return a.pid == linked
+		end
+		if a.cwd ~= b.cwd then
+			return a.cwd < b.cwd
+		end
+		return a.pid < b.pid
+	end)
+	state.total = #mine -- for the filter's "n / total"
 	local rows = {}
-	for _, folder in ipairs(state.folders or {}) do
-		if state.filter == "" or match(folder.name) then
-			table.insert(rows, { kind = "folder", folder = folder, key = folder.path, path = folder.path })
+	for _, s in ipairs(mine) do
+		local where = branch_of[s.cwd] or "removed worktree"
+		if state.filter == "" or match(sessions().name(s)) or match(where) then
+			table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
 		end
 	end
 	return rows
-end
-
--- Is the editor in `path` (or below it)?
-local function here(path)
-	local cwd = vim.fn.getcwd()
-	return cwd == path or vim.startswith(cwd, path .. "/")
 end
 
 -- One line: a left part (builder) and an optional right part { text, hl }
@@ -125,7 +147,7 @@ local function number(b, i)
 	b.add(i <= 9 and (" " .. i .. " ") or "   ", "SwitchyardDim")
 end
 
-local function worktree_line(i, row)
+local function worktree_line(i, row, linked)
 	local wt, b = row.worktree, builder()
 	number(b, i)
 	b.add(wt.current and "@ " or "  ", "SwitchyardCurrent")
@@ -134,40 +156,38 @@ local function worktree_line(i, row)
 		b.add("  ")
 		b.add(wt.symbols, "SwitchyardSymbols")
 	end
+	local linked_here = vim.iter(row.agents):find(function(s)
+		return s.pid == linked
+	end)
+	if linked_here then
+		local more = #row.agents > 1 and (" +" .. (#row.agents - 1)) or ""
+		return b, { "● " .. sessions().name(linked_here) .. more, "SwitchyardLinked" }
+	elseif #row.agents > 0 then
+		return b, { "● " .. #row.agents, "SwitchyardAgent" }
+	end
 	return b
 end
 
-local function folder_line(i, row)
-	local folder, b = row.folder, builder()
-	local current = here(folder.path)
+local function agent_line(i, row, linked)
+	local s, b = row.session, builder()
+	local is_linked = s.pid == linked
 	number(b, i)
-	b.add(current and "@ " or "  ", "SwitchyardCurrent")
-	add_matched(b, folder.name, (current and "SwitchyardCurrent") or (folder.repo and "SwitchyardRepo") or nil)
-	if not folder.repo then
-		b.add("/", "SwitchyardDim")
-		return b
-	end
-	return b, { "git", "SwitchyardDim" }
+	b.add("● ", is_linked and "SwitchyardLinked" or "SwitchyardAgent")
+	add_matched(b, sessions().name(s), is_linked and "SwitchyardLinked" or nil)
+	return b, { row.where, "SwitchyardDim" }
 end
 
 ---------------------------------------------------------------------------
 -- Title, footer, layout
 ---------------------------------------------------------------------------
 
--- The location only when it isn't the editor's own repo
 local function title()
-	local parts = { { " switchyard ", "SwitchyardHeading" }, { "· " .. view .. " ", "SwitchyardDim" } }
-	if view == "folders" then
-		table.insert(parts, { "· " .. vim.fn.fnamemodify(state.dir, ":~") .. " ", "SwitchyardDim" })
-	elseif not here(state.repo) then
-		table.insert(parts, { "· " .. vim.fn.fnamemodify(state.repo, ":t") .. " ", "SwitchyardDim" })
-	end
-	return parts
+	return { { " switchyard ", "SwitchyardHeading" }, { "· " .. view .. " ", "SwitchyardDim" } }
 end
 
 local function hints(width)
-	local text = view == "worktrees" and " ⏎ switch  h folders  n new  / filter  . actions  ? keys"
-		or " ⏎ switch  l inside  h up  / filter  . actions  ? keys"
+	local text = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . actions  ? keys"
+		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  . actions  ? keys"
 	return truncate(text, width - 1)
 end
 
@@ -230,25 +250,27 @@ local function render()
 	if not M.is_open() then
 		return
 	end
-	state.rows = view == "folders" and folder_rows() or worktree_rows()
+	local all = sessions().all()
+	state.rows = view == "agents" and agent_rows(all) or worktree_rows(all)
 
 	-- Lines, and the width they need
+	local linked = sessions().linked_pid()
 	local parts, want = {}, 0
 	for i, row in ipairs(state.rows) do
 		local b, right
 		if row.kind == "worktree" then
-			b, right = worktree_line(i, row)
+			b, right = worktree_line(i, row, linked)
 		else
-			b, right = folder_line(i, row)
+			b, right = agent_line(i, row, linked)
 		end
 		parts[i] = { b = b, right = right }
 		want = math.max(want, width_of(b.text) + (right and width_of(right[1]) + 4 or 1))
 	end
 	if #parts == 0 then
-		local loaded = view == "folders" and state.folders or state.worktrees
-		local message = loaded and (state.filter == "" and "Empty" or "No matches")
-			or (view == "worktrees" and state.err)
-			or "Loading…"
+		local message = state.worktrees and "No matches" or (state.err or "Loading…")
+		if view == "agents" and state.filter == "" and state.worktrees then
+			message = "No agents running"
+		end
 		local b = builder()
 		b.add("   " .. message, "SwitchyardDim")
 		parts[1] = { b = b }
@@ -304,110 +326,64 @@ local function move(delta)
 	state.selected[view] = state.rows[index].key
 end
 
--- Enter on `row`: the editor goes to its folder
-local function activate(row)
-	M.close()
-	vim.schedule(function()
-		require("switchyard.projects").switch(row.path)
-	end)
-end
-
--- The subfolders of state.dir. Linked worktrees (a `.git` file, not a
--- folder) are left out: they're listed under their repo.
-local function load_folders()
-	local list = {}
-	for name, type in vim.fs.dir(state.dir) do
-		local path = vim.fs.joinpath(state.dir, name)
-		if name:sub(1, 1) ~= "." and (type == "directory" or vim.fn.isdirectory(path) == 1) then
-			local git = vim.uv.fs_stat(path .. "/.git")
-			if not (git and git.type == "file") then
-				table.insert(list, { name = name, path = path, repo = git ~= nil })
-			end
-		end
-	end
-	table.sort(list, function(a, b)
-		return a.name:lower() < b.name:lower()
-	end)
-	state.folders = list
-end
-
--- The worktrees of state.repo, looked at again. Not a repo (the editor sits
--- in a plain folder): the folders view instead.
-local function load_worktrees()
-	require("switchyard.worktrees").list(state.repo, function(worktrees, err)
-		state.worktrees, state.err = worktrees, err
-		for _, wt in ipairs(worktrees or {}) do
-			wt.current = here(wt.path) -- the editor's, not git's idea of "current" for state.repo
-			if wt.current and not state.selected.worktrees then
-				state.selected.worktrees = wt.path
-			end
-		end
-		if not worktrees and view == "worktrees" then
-			view = "folders"
-		end
-		render()
-	end)
-end
-
--- The folder that holds a repo: next to its main worktree (worktree folders
--- sit there too)
-local function around(repo)
-	for _, wt in ipairs(state.worktrees or {}) do
-		if wt.main then
-			return vim.fs.dirname(wt.path)
-		end
-	end
-	return vim.fs.dirname(repo)
-end
-
-local function show_folders(dir, select)
-	view, state.dir, state.filter = "folders", dir, ""
-	state.selected.folders = select
-	load_folders()
-	render()
-end
-
--- `l`: look inside a folder; a repo shows its worktrees
-local function enter(row)
-	if row.kind ~= "folder" then
+-- Switch the editor but keep the current link
+local function peek(path)
+	if path == vim.fn.getcwd() then
 		return
 	end
-	if row.folder.repo then
-		view, state.repo, state.worktrees, state.selected.worktrees = "worktrees", row.path, nil, nil
-		render()
-		return load_worktrees()
-	end
-	show_folders(row.path)
+	vim.schedule(function()
+		sessions().keep_link_for(path)
+		if not require("switchyard.projects").switch(path) then
+			sessions().keep_link_for(nil) -- blocked (unsaved changes): no arrival follows
+		end
+	end)
 end
 
--- `h`: worktrees go to the folders around the repo, folders one level up
-local function up()
-	if view == "worktrees" then
-		local main = vim.iter(state.worktrees or {}):find(function(wt)
-			return wt.main
+-- Enter (alt = Shift+Enter) on `row`.
+--   worktree: switch (the link moves along) / peek (the link stays)
+--   agent:    go to it (switch to its worktree + link) / link only, stay here
+local function activate(row, alt)
+	if row.kind == "agent" and alt then
+		sessions().link(row.session)
+		return render()
+	end
+	M.close()
+	if row.kind == "worktree" then
+		if alt then
+			return peek(row.path)
+		end
+		return vim.schedule(function()
+			require("switchyard.projects").switch(row.path)
 		end)
-		return show_folders(around(state.repo), main and main.path or state.repo)
 	end
-	local parent = vim.fs.dirname(state.dir)
-	if parent ~= state.dir then
-		show_folders(parent, state.dir)
-	end
+	vim.schedule(function()
+		local moved = row.path ~= vim.fn.getcwd()
+		if require("switchyard.projects").switch(row.path) then
+			-- Before the (scheduled) arrival rules run, so they keep this link
+			sessions().link(row.session, moved) -- quiet after a switch: the statusline shows it
+		end
+	end)
 end
 
 local function toggle_view()
-	if view == "worktrees" then
-		view = "folders"
-		load_folders()
-	elseif state.worktrees then
-		view = "worktrees"
-	end
+	view = view == "worktrees" and "agents" or "worktrees"
 	render()
 end
 
--- Ctrl-R, and on opening
+-- Worktrees and agents, both looked at again (Ctrl-R, and on opening)
 local function refresh()
-	load_folders()
-	load_worktrees()
+	sessions().refresh() -- redraws through SwitchyardSessionsChanged when agents changed
+	require("switchyard.worktrees").list(vim.fn.getcwd(), function(worktrees, err)
+		state.worktrees, state.err = worktrees, err
+		if not state.selected.worktrees then
+			for _, wt in ipairs(worktrees or {}) do
+				if wt.current then
+					state.selected.worktrees = wt.path
+				end
+			end
+		end
+		render()
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -438,7 +414,6 @@ local function start_filter()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "switchyard"
-	local k = keys()
 	state.input_buf = buf
 	state.input_win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -453,12 +428,19 @@ local function start_filter()
 	local function map(key, fn)
 		vim.keymap.set("i", key, fn, { buffer = buf, nowait = true, silent = true })
 	end
-	map("<CR>", function()
+	local k = keys()
+	local function act(alt)
 		local row = state.rows[selected_index()]
 		if row then
 			vim.cmd.stopinsert()
-			activate(row)
+			activate(row, alt)
 		end
+	end
+	map("<CR>", function()
+		act(false)
+	end)
+	map(k.alt_activate, function()
+		act(true)
 	end)
 	map("<C-n>", function()
 		move(1)
@@ -496,41 +478,212 @@ local function warn(message)
 	vim.notify("switchyard: " .. message, vim.log.levels.WARN)
 end
 
-local function copy_path(row)
-	vim.fn.setreg("+", row.path)
-	vim.fn.setreg('"', row.path)
-	vim.notify("switchyard: copied " .. vim.fn.fnamemodify(row.path, ":~"))
+-- Choose one of this repo's worktrees (the current one first, `except` left
+-- out), or create a new one. callback(worktree): { path, branch }
+local function with_worktree(title, except, callback)
+	local list = vim.tbl_filter(function(wt)
+		return wt.path ~= except
+	end, state.worktrees or {})
+	table.sort(list, function(a, b)
+		return a.current and not b.current
+	end)
+	local items = vim.tbl_map(function(wt)
+		return {
+			label = (wt.current and "@ " or "  ") .. wt.branch,
+			action = function()
+				callback(wt)
+			end,
+		}
+	end, list)
+	table.insert(items, {
+		label = "  new worktree…",
+		key = keys().new,
+		action = function()
+			require("switchyard.actions").create_worktree(vim.fn.getcwd(), function(path, branch)
+				refresh()
+				callback({ path = path, branch = branch })
+			end)
+		end,
+	})
+	require("switchyard.menu").open({ title = title, items = items })
 end
 
 -- Per view: { key = name in keys.yard, label, run = function(row), danger?,
 -- any_row? (also works on an empty list; row is nil then) }
 local actions = {
 	worktrees = {
-		{ key = "activate", label = "switch here", run = activate },
+		{
+			key = "activate",
+			label = "switch here",
+			run = activate,
+		},
+		{
+			key = "alt_activate",
+			label = "peek: switch, keep the link",
+			run = function(row)
+				activate(row, true) -- Shift+Enter
+			end,
+		},
 		{
 			key = "new",
 			label = "new worktree",
 			any_row = true,
 			run = function()
-				require("switchyard.actions").create_worktree(state.repo, load_worktrees)
+				require("switchyard.actions").create_worktree(vim.fn.getcwd(), refresh)
 			end,
 		},
-		{ key = "copy_path", label = "copy path", run = copy_path },
-		{ key = "up", label = "folders around this repo", any_row = true, run = up },
+		{
+			key = "dispatch",
+			label = "dispatch: a task for a new agent in a new worktree",
+			any_row = true,
+			run = function()
+				M.close()
+				require("switchyard.prompt").open_dispatch()
+			end,
+		},
+		{
+			key = "start_agent",
+			label = "start an agent here",
+			run = function(row)
+				require("switchyard.actions").with_agent(function(agent)
+					require("switchyard.launch").new(agent, row.path)
+				end)
+			end,
+		},
+		{
+			key = "continue_agent",
+			label = "continue the last session here",
+			run = function(row)
+				require("switchyard.actions").with_agent(function(agent)
+					require("switchyard.launch").continue(agent, row.path)
+				end)
+			end,
+		},
+		{
+			key = "fork",
+			label = "fork the linked agent here",
+			run = function(row)
+				local linked = sessions().linked()
+				if not linked then
+					return warn("no linked agent to fork")
+				elseif linked.cwd == row.path then
+					return warn("the linked agent already works here")
+				end
+				require("switchyard.launch").fork(linked, row.path)
+			end,
+		},
+		{
+			key = "copy_path",
+			label = "copy path",
+			run = function(row)
+				vim.fn.setreg("+", row.path)
+				vim.fn.setreg('"', row.path)
+				vim.notify("switchyard: copied " .. vim.fn.fnamemodify(row.path, ":~"))
+			end,
+		},
 		{
 			key = "remove",
 			label = "remove worktree",
 			danger = true,
 			run = function(row)
-				require("switchyard.actions").remove_worktree(state.repo, row.worktree, load_worktrees)
+				require("switchyard.actions").remove_worktree(vim.fn.getcwd(), row.worktree, refresh, row.agents)
 			end,
 		},
 	},
-	folders = {
-		{ key = "activate", label = "switch here", run = activate },
-		{ key = "enter", label = "look inside (a repo: its worktrees)", run = enter },
-		{ key = "up", label = "one folder up", any_row = true, run = up },
-		{ key = "copy_path", label = "copy path", run = copy_path },
+	agents = {
+		{
+			key = "activate",
+			label = "go to: switch to its worktree and link",
+			run = activate,
+		},
+		{
+			key = "alt_activate",
+			label = "link only, stay here",
+			run = function(row)
+				activate(row, true) -- Shift+Enter
+			end,
+		},
+		{
+			key = "view",
+			label = "view in the split",
+			run = function(row)
+				M.close()
+				require("switchyard.view").show(row.session)
+			end,
+		},
+		{
+			key = "external",
+			label = "open in an external terminal",
+			run = function(row)
+				require("switchyard.view").external(row.session)
+			end,
+		},
+		{
+			key = "new",
+			label = "new agent in a worktree…",
+			any_row = true,
+			run = function()
+				with_worktree("new agent in", nil, function(wt)
+					require("switchyard.actions").with_agent(function(agent)
+						require("switchyard.launch").new(agent, wt.path)
+					end)
+				end)
+			end,
+		},
+		{
+			key = "fork",
+			label = "fork into another worktree…",
+			run = function(row)
+				with_worktree("fork " .. sessions().name(row.session) .. " into", row.path, function(wt)
+					require("switchyard.launch").fork(row.session, wt.path)
+				end)
+			end,
+		},
+		{
+			key = "dispatch",
+			label = "dispatch: a task for a new agent in a new worktree",
+			any_row = true,
+			run = function()
+				M.close()
+				require("switchyard.prompt").open_dispatch()
+			end,
+		},
+		{
+			key = "send",
+			label = "write a prompt for it",
+			run = function(row)
+				M.close()
+				require("switchyard.prompt").open_for(row.session)
+			end,
+		},
+		{
+			key = "rename",
+			label = "rename its tmux session",
+			run = function(row)
+				local old = row.session.tmux
+				require("switchyard.menu").input({ title = "rename " .. old, default = old }, function(new)
+					if not new or new == "" or new == old then
+						return
+					end
+					new = new:gsub("[%.:]", "_") -- tmux doesn't allow . and : in names
+					require("switchyard.tmux").rename(old, new, function(ok, err)
+						if not ok then
+							return warn("tmux: " .. err)
+						end
+						require("switchyard.view").renamed(old, new)
+						sessions().refresh()
+					end)
+				end)
+			end,
+		},
+		{
+			key = "remove",
+			label = "stop agent",
+			danger = true,
+			run = function(row)
+				require("switchyard.actions").stop_agent(row.session)
+			end,
+		},
 	},
 }
 
@@ -547,7 +700,7 @@ end
 -- How a key reads in menus and hints
 local function key_label(name)
 	local key = keys()[name]
-	local pretty = { ["<CR>"] = "⏎", ["<Tab>"] = "⇥", ["<C-r>"] = "^R" }
+	local pretty = { ["<CR>"] = "⏎", ["<S-CR>"] = "⇧⏎", ["<Tab>"] = "⇥", ["<C-r>"] = "^R" }
 	return pretty[key] or key
 end
 
@@ -568,7 +721,7 @@ local function open_menu(all_keys)
 		end
 	end
 	if all_keys then
-		local other = view == "worktrees" and "folders" or "worktrees"
+		local other = view == "worktrees" and "agents" or "worktrees"
 		for _, nav in ipairs({
 			{ "toggle_view", other .. " view", toggle_view },
 			{ "filter", "filter", start_filter },
@@ -578,7 +731,7 @@ local function open_menu(all_keys)
 			table.insert(items, { label = nav[2], key = key_label(nav[1]), action = nav[3] })
 		end
 	end
-	local subject = row and (row.kind == "worktree" and row.worktree.branch or row.folder.name) or view
+	local subject = row and (row.kind == "worktree" and row.worktree.branch or sessions().name(row.session)) or view
 	require("switchyard.menu").open({ title = all_keys and (view .. " · keys") or subject, items = items })
 end
 
@@ -694,6 +847,8 @@ local function set_autocmds()
 		end,
 	})
 
+	-- Agents starting, stopping, moving or getting their tmux name
+	vim.api.nvim_create_autocmd("User", { group = group, pattern = "SwitchyardSessionsChanged", callback = render })
 	vim.api.nvim_create_autocmd("VimResized", { group = group, callback = render })
 	vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = ui.set_highlights })
 end
@@ -703,14 +858,13 @@ function M.open()
 		return vim.api.nvim_set_current_win(state.win)
 	end
 	view = view or require("switchyard.config").options.yard.view
-	vim.cmd.stopinsert() -- opened from a terminal: the yard works in normal mode
+	vim.cmd.stopinsert() -- opened from a terminal (the viewer): the yard works in normal mode
 	ui.set_highlights()
 	state.origin = vim.api.nvim_get_current_win()
 	state.filter, state.rows, state.worktrees, state.err = "", {}, nil, nil
-	-- Start at the editor's folder: its repo, and the folders around it
-	state.repo = vim.fn.getcwd()
-	state.dir = vim.fs.dirname(state.repo)
-	state.selected = { folders = state.repo }
+	-- Start on the linked agent / the current worktree
+	local linked = sessions().linked_pid()
+	state.selected = { agents = linked and ("pid:" .. linked) or nil }
 
 	state.buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[state.buf].bufhidden = "hide"
