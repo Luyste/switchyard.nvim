@@ -14,17 +14,44 @@ end
 function M.check()
 	vim.health.start("switchyard: programs")
 	check_program("git", { "--version" }, "brew install git")
+	check_program("tmux", { "-V" }, "brew install tmux")
 
-	vim.health.start("switchyard: integrations")
-	local integrations = require("switchyard.integrations")
-	for _, name in ipairs(integrations.names) do
-		if require("switchyard.config").options.integrations[name] == false then
-			vim.health.info(name .. ": disabled")
-		elseif integrations.active(name) then
-			vim.health.ok(name .. ": active")
+	vim.health.start("switchyard: options")
+	local opts = require("switchyard.config").options
+
+	local ok_view, view = pcall(require, "switchyard.view")
+	if ok_view then
+		local name, err = view.terminal_name()
+		if name then
+			vim.health.ok("external terminal: " .. name)
 		else
-			vim.health.info(name .. ": not installed (optional)")
+			vim.health.warn("external terminal: " .. err, "Set `terminal` in setup()")
 		end
+	end
+
+	if require("switchyard.live").follow_supported() then
+		vim.health.ok("follow edits: available")
+	else
+		vim.health.info("follow edits: not available (needs recursive folder watching: macOS or Windows)")
+	end
+
+
+	vim.health.start("switchyard: agents")
+	local running = {}
+	for _, s in ipairs(require("switchyard.sessions").all()) do
+		running[s.agent.name] = (running[s.agent.name] or 0) + 1
+	end
+	local any = false
+	for _, agent in ipairs(require("switchyard.agents").configured()) do
+		if vim.fn.executable(agent.cmd[1]) == 1 then
+			any = true
+			vim.health.ok(("%s: installed, %d running in tmux"):format(agent.name, running[agent.name] or 0))
+		else
+			vim.health.info(agent.name .. ": `" .. agent.cmd[1] .. "` not installed")
+		end
+	end
+	if not any then
+		vim.health.warn("none of the configured agents is installed", "Install one (pi, claude, codex) or add your own in `agents`")
 	end
 end
 
