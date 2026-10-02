@@ -498,29 +498,49 @@ local function pretty(key)
 	return ({ enter = "⏎", ["alt-enter"] = "⌥⏎" })[key] or key:gsub("^alt%-", "⌥"):gsub("^ctrl%-", "^")
 end
 
--- The header: the prefixes, then this view's main keys (no parentheses: it
--- goes into fzf's change-header(...))
+-- Short words for the key hints; an action without one shows the first word
+-- of its label
+local hint_words = {
+	worktree = { activate = "switch", alt_activate = "peek", start_agent = "agent", continue_agent = "continue" },
+	agent = { activate = "go to", alt_activate = "link", external = "terminal", send = "prompt" },
+	project = { activate = "switch", alt_activate = "peek", start_agent = "agent" },
+}
+
+-- The header: the views and their prefixes, the shown one highlighted
 local function header(name)
-	local k, p = keys(), config().yard.prefixes
-	local hints = {
-		worktrees = { { "activate", "switch" }, { "alt_activate", "peek" }, { "start_agent", "agent" } },
-		agents = { { "activate", "go to" }, { "alt_activate", "link" }, { "view", "view" } },
-		projects = { { "activate", "switch" }, { "alt_activate", "peek" }, { "start_agent", "agent" } },
-	}
-	local views = {}
+	local p, views = config().yard.prefixes, {}
 	for _, view in ipairs({ "worktrees", "agents", "projects" }) do
 		local label = p[view] .. view
-		table.insert(views, view == name and color("SwitchyardHeading", label) or label)
+		table.insert(views, view == name and color("SwitchyardHeading", label) or color("SwitchyardDim", label))
 	end
-	return table.concat(views, " ")
-		.. "   "
-		.. table.concat(
-			vim.tbl_map(function(h)
-				return pretty(k[h[1]]) .. " " .. h[2]
-			end, hints[name]),
-			"  "
-		)
-		.. "  F1 keys"
+	return table.concat(views, "  ")
+end
+
+-- The footer: every key of this view, wrapped to the list's width. No
+-- parentheses: it goes into fzf's change-footer(...)
+local function footer(name)
+	local kind, k = kind_of_view[name], keys()
+	local hints = {}
+	for _, action in ipairs(actions[kind]) do
+		local word = hint_words[kind][action.key] or action.label:match("^[%w]+")
+		table.insert(hints, color("SwitchyardKey", pretty(k[action.key])) .. " " .. word)
+	end
+	table.insert(hints, color("SwitchyardKey", pretty(k.refresh)) .. " refresh")
+	table.insert(hints, color("SwitchyardKey", "F1") .. " help")
+	-- The list takes the window's width minus the preview (55%)
+	local width = math.floor(vim.o.columns * 0.8 * 0.45) - 4
+	local lines, current, current_width = {}, "", 0
+	for _, hint in ipairs(hints) do
+		local w = vim.fn.strdisplaywidth((hint:gsub("\27%[[%d;]*m", "")))
+		if current_width > 0 and current_width + 2 + w > width then
+			table.insert(lines, current)
+			current, current_width = "", 0
+		end
+		current = current_width > 0 and (current .. "  " .. hint) or hint
+		current_width = current_width + (current_width > 0 and 2 or 0) + w
+	end
+	table.insert(lines, current)
+	return table.concat(lines, "\n")
 end
 
 -- The contents of the view shown now (fzf reloads it when the view changes)
@@ -558,7 +578,12 @@ function M.open(name)
 		header = header(name),
 		actions = fzf_actions(),
 		preview = { type = "cmd", fn = preview },
-		fzf_opts = { ["--delimiter"] = "\t", ["--with-nth"] = "1", ["--no-multi"] = true },
+		fzf_opts = {
+			["--delimiter"] = "\t",
+			["--with-nth"] = "1",
+			["--no-multi"] = true,
+			["--footer"] = footer(name), -- the keys, below the list
+		},
 		winopts = {
 			title = false, -- Neovide draws border titles over the border
 			height = 0.6,
@@ -577,7 +602,7 @@ function M.open(name)
 		local out = ""
 		if view ~= state.view then
 			state.view = view
-			out = ("reload(%s)+change-header(%s)+"):format(cmd, header(view))
+			out = ("reload(%s)+change-header(%s)+change-footer(%s)+"):format(cmd, header(view), footer(view))
 		end
 		return out .. "search:" .. search -- last in the chain: any text goes
 	end, opts, "{q}")
