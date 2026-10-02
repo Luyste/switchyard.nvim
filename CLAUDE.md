@@ -121,10 +121,14 @@ anything, then **inspect the actual code**: some items below are marked
   draws them over the border line). Title = the float's winbar
   (`ui.title(win, chunks)`), hints = a virtual line below the last line
   (`ui.hints(buf, text)`); both add a line to the window's height.
-- **Questions in switchyard's own style:** choices via `menu.open`, text via
-  `menu.input` (a small float below the yard when opened from it; ⏎ confirm,
-  Esc cancels, clicking elsewhere cancels). Never `vim.ui.select` /
-  `vim.ui.input` (those end up at the bottom of the screen).
+- **Questions in fzf-lua (Oct 2026):** choices via `menu.open` (items
+  {label, action, key?, danger?}, on_cancel), text via `menu.input` (fzf's
+  search line is the input: `--disabled`, the text from `opts.last_query`).
+  Both are small fzf-lua windows (`no_hide`, no preview, no border title);
+  focus goes back where it was (insert mode again in the prompt builder,
+  which stays open while an fzf window has focus). fzf-lua closes its window
+  BEFORE the action runs: `on_close` waits two schedules to tell a cancel
+  from a choice.
 - **Plugin has no default global keymaps.** It exposes functions/commands; my
   config maps keys. Buffer-local keys inside plugin windows are fine and
   configurable via `config.keys`.
@@ -202,8 +206,8 @@ lua/switchyard/
   ui.lua                     shared highlights (linked to standard groups, default=true)
                              + hide/show cursor (guicursor → blended hl), one shared save;
                              badge text color picked by WCAG contrast (Normal fg vs bg)
-  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
-                             used for every choice; menu.input for text
+  menu.lua                   open(opts) / input(opts, cb) as small fzf-lua windows
+                             (same API as the old float menus: callers unchanged)
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers
   picker.lua                 the yard: ONE fzf-lua picker, views by prefix (Oct 2026,

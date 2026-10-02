@@ -313,9 +313,9 @@ access), so they are cheap to call on every redraw: >lua
     -- "DRAFT" or "DRAFT 2" while a prompt draft waits
     require("switchyard").draft_status()
 <
-The yard is an fzf-lua window ('filetype' "fzf"). switchyard's menus and
-the prompt builder have 'filetype' "switchyard", so a statusline can
-recognise them.
+The yard and switchyard's questions (which agent, which worktree, branch
+name, confirm) are fzf-lua windows ('filetype' "fzf"). The prompt builder
+has 'filetype' "switchyard", so a statusline can recognise it.
 
 ==============================================================================
 12. FUNCTIONS                                                 *switchyard-api*

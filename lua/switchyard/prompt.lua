@@ -63,16 +63,18 @@ local function target()
 end
 
 local function title()
+	local head = { " prompt ", "SwitchyardHeading" }
 	if state.dispatch then
-		return { { " → ", "SwitchyardDim" }, { "new worktree + agent ", "SwitchyardHeading" }, { "(dispatch) ", "SwitchyardDim" } }
+		return { head, { "→ ", "SwitchyardDim" }, { "new worktree + agent ", "SwitchyardHeading" }, { "(dispatch) ", "SwitchyardDim" } }
 	end
 	local s = state.shown
 	if not s then
-		return { { " → no linked agent (link one in the yard, or ^T) ", "SwitchyardDanger" } }
+		return { head, { "→ no linked agent (link one in the yard, or ^T) ", "SwitchyardDanger" } }
 	end
 	local linked = s.pid == require("switchyard.sessions").linked_pid()
 	local parts = {
-		{ " → ", "SwitchyardDim" },
+		head,
+		{ "→ ", "SwitchyardDim" },
 		{ require("switchyard.sessions").name(s) .. " ", linked and "SwitchyardLinked" or "SwitchyardAgent" },
 		{ linked and "(linked) " or "", "SwitchyardDim" },
 	}
@@ -498,7 +500,8 @@ function M.open()
 			callback = function()
 				vim.schedule(function()
 					local current = vim.api.nvim_get_current_win()
-					local to_menu = vim.bo[vim.api.nvim_win_get_buf(current)].filetype == "switchyard"
+					local ft = vim.bo[vim.api.nvim_win_get_buf(current)].filetype
+					local to_menu = ft == "switchyard" or ft == "fzf" -- a question on top of it
 					if valid_win(state.win) and current ~= state.win and not to_menu then
 						M.close()
 					end

@@ -249,8 +249,9 @@ require("switchyard").status()          -- "pi-shoebox" or "pi-shoebox (in other
 require("switchyard").draft_status()    -- "DRAFT 2" while a prompt draft waits
 ```
 
-The yard is an fzf-lua window ('filetype' `fzf`); switchyard's menus and the
-prompt builder use 'filetype' `switchyard`, and the viewer's buffer is named
+The yard and switchyard's questions (which agent, which worktree, branch
+name, confirm) are fzf-lua windows ('filetype' `fzf`); the prompt builder uses
+'filetype' `switchyard`, and the viewer's buffer is named
 `switchyard://<agent>`.
 
 ### Agents
