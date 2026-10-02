@@ -29,12 +29,14 @@ together:
 
 ## Features
 
-- **The yard**: an [fzf-lua](https://github.com/ibhagwan/fzf-lua) picker with
-  two views, *worktrees* and *agents*: fuzzy search, a preview (git status, or
-  the agent's screen), and keys to switch, peek, create and remove worktrees,
-  start, fork, rename and stop agents.
-- **Linking and following**: arriving in a worktree links its agent
-  automatically; if the linked agent moves, the editor follows.
+- **The yard**: one [fzf-lua](https://github.com/ibhagwan/fzf-lua) picker with
+  three views chosen by a prefix: `&` worktrees, `*` agents, `%` projects (any
+  git repo on your machine, plus pinned folders). Fuzzy search, a preview (git
+  status, or the agent's screen), and keys to switch, peek, create and remove
+  worktrees, start, fork, rename and stop agents.
+- **Linking and following**: the editor goes with the agent of where it is:
+  arriving in a folder links its agent and shows it in the viewer; if the
+  linked agent moves, the editor follows.
 - **Peek**: visit another worktree to copy something, while prompts keep going
   to the agent you were working with.
 - **Viewer**: the agent's terminal in a split next to your code, or in an
@@ -46,8 +48,6 @@ together:
   leaving what you're doing.
 - **Live reload**: open files reload while the agent edits them, even while
   you're typing in the agent's terminal.
-- **Follow edits**: optionally open whatever file the agent just changed,
-  with the cursor on the change.
 
 ## Requirements
 
@@ -64,6 +64,7 @@ together:
 
 - **[fzf-lua](https://github.com/ibhagwan/fzf-lua)** (and `fzf`): the yard is
   an fzf-lua picker
+- **fd**: finds the projects (`%`)
 
 Run `:checkhealth switchyard` to see what's found.
 
@@ -107,7 +108,6 @@ map({ "n", "x" }, "<leader>yp", sy("prompt"), { desc = "switchyard: prompt (+ se
 map("n", "<leader>yl", sy("prompt_line"), { desc = "switchyard: prompt with this line + diagnostics" })
 map({ "n", "x" }, "<leader>yd", sy("dispatch"), { desc = "switchyard: dispatch a task" })
 map({ "n", "t" }, "<leader>yh", sy("link_here"), { desc = "switchyard: link an agent in this worktree" })
-map({ "n", "t" }, "<leader>yf", sy("follow_edits"), { desc = "switchyard: follow the agent's edits" })
 map("n", "<leader>yo", sy("open_external"), { desc = "switchyard: agent in an external terminal" })
 ```
 
@@ -123,53 +123,63 @@ name ever changes.
 
 ### The yard
 
-Open it with `open_yard()` or `:Switchyard`: an fzf-lua picker, starting on
-the current worktree (or the linked agent in the agents view). Type to search.
-The preview shows `git status` and recent commits for a worktree, and the
-agent's screen for an agent.
+Open it with `open_yard()` or `:Switchyard`: one fzf-lua picker with three
+views. Type a prefix first to choose one; without a prefix you get
+`yard.view` (worktrees):
+
+| Prefix | View | Preview |
+| --- | --- | --- |
+| `&` | the worktrees of this repo (outside a repo: the folder itself) | `git status`, recent commits |
+| `*` | the agents of this repo | the agent's screen |
+| `%` | projects: the current one, pinned folders, projects with agents (`●`), recent ones, then every git repo `fd` finds under `projects.roots` | `git status` (or the folder's files) |
+
+`%sho` searches the projects for "sho". The projects found are cached, so the
+list is there at once while `fd` looks again.
 
 Plain letters type into the search, so actions use `Alt` (on macOS: Option,
 set as Meta in your terminal or Neovide, e.g.
-`vim.g.neovide_input_macos_option_key_is_meta = "only_left"`).
+`vim.g.neovide_input_macos_option_key_is_meta = "only_left"`). Keys act on
+the kind of row under the cursor:
 
-| Key | Worktrees view | Agents view |
-| --- | --- | --- |
-| `Enter` | switch the editor there | go to: switch to its worktree and link it |
-| `Alt-Enter` | peek: switch, keep the current link | link it, stay where you are (picker stays open) |
-| `Tab` | agents view | worktrees view |
-| `Alt-N` | new worktree | new agent in a worktree |
-| `Alt-D` | dispatch a task | dispatch a task |
-| `Ctrl-X` | remove worktree (choose: keep or stop its agents) | stop the agent |
-| `Alt-F` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree |
-| `Alt-A` / `Alt-C` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | |
-| `Alt-Y` | copy the path | |
-| `Alt-V` / `Alt-G` | | show it in the split / in an external terminal |
-| `Alt-S` | | write a prompt for this agent |
-| `Alt-R` | | rename its tmux session |
-| `Ctrl-R` | refresh | refresh |
-| `F1` | all keys | all keys |
+| Key | Worktree | Agent | Project |
+| --- | --- | --- | --- |
+| `Enter` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
+| `Alt-Enter` | peek: switch, keep link and viewer | link it, stay (picker stays open) | peek |
+| `Alt-A` | start an agent here | | start an agent there (the editor stays) |
+| `Alt-C` | continue an earlier session here | | |
+| `Alt-N` | new worktree | new agent in a worktree | |
+| `Alt-D` | dispatch a task | dispatch a task | |
+| `Ctrl-X` | remove worktree (choose: keep or stop its agents) | stop the agent | |
+| `Alt-F` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree | |
+| `Alt-Y` | copy the path | | copy the path |
+| `Alt-V` / `Alt-G` | | show it in the split / in an external terminal | |
+| `Alt-S` | | write a prompt for this agent | |
+| `Alt-R` | | rename its tmux session | |
+| `Ctrl-R`, `F1` | refresh, all keys | same | same |
 
 Every key can be changed in `keys.yard` (fzf key names, see Configuration).
 
-The yard shows **one project**: the worktrees and agents of the repo you're
-in. For another repo, open Neovim there.
+A typical detour: `%` → `Enter` on your Neovim config (pinned) → `&` →
+`Alt-A`: an agent starts there and the viewer shows it working.
 
 ### Linking, following and peeking
 
 Your editor is linked to one agent. The link decides where prompts go and
 which agent the editor follows. Arriving in a worktree:
 
-- **one agent there**: the editor links to it, silently;
-- **several agents**: the one you viewed last, else the most recently started
-  (unless you're already linked to one of them);
-- **no agent**: the link stays (configurable with `empty_worktree`).
+- **an agent there**: the editor links to it and shows it in the viewer
+  (several: the one you used last, else the most recently started);
+- **no agent**: the editor unlinks and the viewer closes.
+
+At startup only the link is set; the viewer stays closed.
 
 When the linked agent moves to another worktree, the editor switches there.
 switchyard sees that as the agent's process changing folders (tmux follows it),
 which agents with a built-in worktree move do (Claude Code's `EnterWorktree`).
 Switching the editor yourself never moves an agent.
 
-**Peek** (`Shift+Enter` in the yard) switches without touching the link: look
+**Peek** (`Alt-Enter` in the yard, also for projects and plain folders)
+switches without touching the link or the viewer: look
 around in worktree B, copy a snippet, and send it to your agent in A. Changed
 your mind? `link_here()` links an agent of the worktree you're in.
 
@@ -222,27 +232,18 @@ from the first line, creates the worktree, and starts an agent there with
 your text as its first message. Your editor and your link stay where they
 are; the new agent shows up in the yard.
 
-### Live reload and following edits
-
-![Following edits: the file the agent changes opens on the changed line](demo/media/follow.gif)
+### Live reload
 
 With `live_reload` on (the default), files open in Neovim reload when an agent
 changes them, also while you're typing in the viewer. Buffers with unsaved
 changes are never touched.
 
-`follow_edits()` turns on **following edits**: whenever the agent changes a
-file in your worktree, it opens in your editor window with the cursor on the
-change, without taking focus from the viewer. Ignored files (`.gitignore`)
-are skipped. This needs recursive file watching, which Neovim offers on macOS
-and Windows.
-
 ### Statusline
 
-Three cheap functions (no file access) for your statusline:
+Two cheap functions (no file access) for your statusline:
 
 ```lua
 require("switchyard").status()          -- "pi-shoebox" or "pi-shoebox (in other-worktree)"
-require("switchyard").following_edits() -- true while following edits
 require("switchyard").draft_status()    -- "DRAFT 2" while a prompt draft waits
 ```
 
@@ -295,12 +296,18 @@ The defaults:
 require("switchyard").setup({
   agents = { "pi", "claude", "codex" }, -- presets or your own tables, see Agents
   follow = true,               -- follow the linked agent to other worktrees
-  empty_worktree = "keep",     -- arriving where no agent runs: "keep" | "unlink" the link
   terminal = "auto",           -- external terminal: "auto" | "ghostty" | "kitty" | "wezterm"
                                --   | "alacritty" | "terminal.app" | function(cmd) return argv end
   live_reload = true,          -- reload open files when agents change them
   yard = {
-    view = "worktrees",        -- the view the yard opens in: "worktrees" | "agents"
+    view = "worktrees",        -- the view without a prefix: "worktrees" | "agents" | "projects"
+    prefixes = { worktrees = "&", agents = "*", projects = "%" },
+  },
+  projects = {                 -- the projects view (%)
+    roots = { "~" },           -- where fd looks for git repos
+    exclude = { "Library", "node_modules", ".cache", ".Trash", ".local/share/nvim",
+                ".oh-my-zsh", ".claude/plugins" },
+    pinned = {},               -- always listed, git or not: { "~/.config/nvim" }
   },
   viewer = {
     width = 0.45,              -- share of the editor width for the viewer split
@@ -308,8 +315,7 @@ require("switchyard").setup({
   keys = {
     yard = {
       -- fzf key names; plain letters type into the search
-      activate = "enter", alt_activate = "alt-enter", toggle_view = "tab",
-      refresh = "ctrl-r", new = "alt-n", remove = "ctrl-x", fork = "alt-f",
+      activate = "enter", alt_activate = "alt-enter", refresh = "ctrl-r", new = "alt-n", remove = "ctrl-x", fork = "alt-f",
       dispatch = "alt-d", start_agent = "alt-a", continue_agent = "alt-c",
       copy_path = "alt-y", view = "alt-v", external = "alt-g",
       rename = "alt-r", send = "alt-s",
@@ -320,8 +326,8 @@ require("switchyard").setup({
 
 ## Commands and events
 
-- `:Switchyard` opens the yard; `:Switchyard follow-edits` toggles following
-  edits.
+- `:Switchyard` opens the yard; `:Switchyard <folder>` switches the editor to
+  any folder (with completion).
 - `User SwitchyardSwitched` fires after the editor switched worktrees
   (`data = { from, to }`), for example to reopen a file tree:
 

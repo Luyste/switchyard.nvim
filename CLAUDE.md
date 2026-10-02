@@ -29,14 +29,20 @@ anything, then **inspect the actual code**: some items below are marked
   (repo and folder) now belongs to a separate Rust program. Inside Neovim the
   plugin is still `switchyard` (`require("switchyard")`, `:Switchyard`).
 - My config loads it in `~/.config/nvim/lua/plugins/switchyard.lua`:
-  - `require("switchyard").setup({})`
+  - `require("switchyard").setup({ projects = { pinned = { "~/.config/nvim" } } })`
+    (my nvim config is in a bare dotfiles repo: no `.git` of its own)
   - A `User SwitchyardSwitched` autocmd that opens nvim-tree (inside
     `vim.schedule`) and `wincmd p`.
   - Keymaps via a helper `sy(fn)` that returns `function() require("switchyard")[fn]() end`
     (function form, so a missing name never breaks startup):
-    `<D-Y>` open_yard (n + t; I also want Cmd+Shift+S for the yard), `<D-j>` toggle_view
+    `<D-y>` open_yard (n + t), `<D-j>` toggle_view
     (n + t), `<D-J>` focus_view (n + t: jump between viewer and editor),
-    `<D-O>` open_external, `<D-H>` link_here, `<D-F>` follow_edits (n + t).
+    `<D-O>` open_external, `<D-H>` link_here, `<D-l>`/`<D-L>` prompt /
+    prompt_line, `<D-D>` dispatch.
+  - fzf-lua (`lua/plugins/picker.lua`): `<D-f>` = `fzf.global` (files, `$`
+    buffers, `@`/`#` symbols), `<D-g>` live_grep, `<D-G>` grep_cword,
+    `<D-CR>` resume. (`grep` as a `/` prefix in global fails: rg gets an
+    empty argument.)
     No terminal-mode escape key: Cmd+Shift+J leaves the viewer (Cmd+Esc never
     reaches Neovim in Neovide anyway).
   - My statusline (`lua/config/statusline.lua`) is global (`laststatus=3`):
@@ -61,26 +67,28 @@ anything, then **inspect the actual code**: some items below are marked
 - **Agents live in a worktree.** The agent leads, the editor follows: when the
   _linked_ agent moves worktree, the editor switches there. Switching the editor
   alone never moves an agent (that's "peeking").
-- **Arrival rules** (on `VimEnter` / `DirChanged global`):
-  - exactly one agent in the new folder → link to it silently;
-  - no agent → **keep the current link** (config `empty_worktree = "keep"`;
-    `"unlink"` also exists; `"ask"` was removed: the yard covers it). Keeping the link enables "peek into
-    worktree C, copy a snippet, send it to the orchestrator in worktree A";
-  - several agents → keep the link if it's already one of them; otherwise link
-    the one the viewer showed last, else the most recently started (no prompt:
-    Enter moves the link along, Shift+Enter/peek keeps it).
-  - Arriving after a switch with the viewer open: the viewer comes back, showing
-    the linked agent (`view.sync(true)`), without taking focus.
-- **Enter vs Shift+Enter in the yard (worktree switching):**
-  - Enter = **switch**: the editor goes to the worktree and the arrival rules
-    apply (one agent there → the link moves to it).
-  - Shift+Enter = **peek**: the editor goes to the worktree but the link stays
+- **Arrival rules** (simplified Oct 2026; on `DirChanged global`, after a fresh
+  snapshot): the editor goes with the agent of where it is.
+  - agent(s) in the new folder → link it (several: the last USED one = linked
+    or shown in the viewer, `sessions.viewed`; else most recently started;
+    already linked to one there → keep) AND show it in the viewer
+    (`view.sync(true)`, no focus), even if the viewer was closed;
+  - no agent → unlink and close the viewer.
+  - VimEnter: only the link, the viewer stays closed.
+  - Starting an agent in the editor's folder links it and shows it (launch).
+- **Enter vs Alt-Enter in the yard (switching):**
+  - Enter = **switch**: the editor goes there and the arrival rules apply.
+  - Alt-Enter = **peek** (worktrees, projects, plain folders): the editor goes
+    there but the link AND the viewer stay as they were (`keep_link_for(dir)`
+    records whether the viewer was open; `on_arrival` brings it back). The link stays
     on the current agent, whatever the worktree contains (statusline shows
     `agent (in <other worktree>)`). Used to grab context from B and send it to
     agent A (with the prompt builder's cross-worktree paths).
-- **Two yard views, one meaning per key:** keys act on what the current view
-  shows (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
-  Enter in the agents view = "go to" (switch + link); Shift+Enter = link only.
+- **One yard, views by prefix, one meaning per key:** `&` worktrees, `*`
+  agents, `%` projects (`yard.prefixes`; no prefix = `yard.view`). Keys act
+  on the kind of row under the cursor (alt-n = new worktree / new agent,
+  ctrl-x = remove worktree / stop agent). Enter on an agent = "go to"
+  (switch + link); Alt-Enter on an agent = link only.
 - **Prompt builder = chat convention:** Enter sends, Shift+Enter is a new line.
 - **Dispatch** (fire-and-forget): describe a task → new worktree + agent started
   there with the task as its first message. The editor does NOT switch and the
@@ -101,8 +109,14 @@ anything, then **inspect the actual code**: some items below are marked
   lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
   simply not offered, and is reported by the health check. Pluggable features
   follow the `terminal` pattern: `"auto" | <name> | function(...)`.
-- **One project per yard.** The yard shows the current repo's worktrees and
-  agents; for another repo you step out (no project switching in the plugin).
+- **Projects (`%`):** projects only (no worktrees of other repos): the
+  current project, `projects.pinned`, projects with agents, recent ones
+  (`stdpath("state")/switchyard/recent.json`), the cached last scan
+  (`projects.json`), then `fd` over `projects.roots` minus
+  `projects.exclude` (junk: Library, node_modules, .cache, .Trash, nvim's
+  pack dir, .oh-my-zsh, .claude/plugins). Enter = switch to its main
+  worktree. `&` and `*` stay about the current repo (outside git: the folder
+  itself is the one "worktree", so agents can be started there).
 - **Window style:** titles and key hints never go in the border (Neovide
   draws them over the border line). Title = the float's winbar
   (`ui.title(win, chunks)`), hints = a virtual line below the last line
@@ -128,7 +142,7 @@ anything, then **inspect the actual code**: some items below are marked
 plugin/switchyard.lua        :Switchyard → open the yard (guarded by vim.g.loaded_switchyard)
 lua/switchyard/
   init.lua                   setup(opts) → config, sessions, live; public API:
-                             switch, follow_edits, following_edits, prompt, dispatch,
+                             switch, prompt, dispatch,
                              prompt_line, draft_status, link_here, status, open_yard,
                              toggle_view, focus_view, open_external
   config.lua                 defaults + setup (no unknown-option warning yet; lists replaced
@@ -191,24 +205,31 @@ lua/switchyard/
   menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
                              used for every choice; menu.input for text
   live.lua                   live reload: one fs_event per folder of loaded file buffers
-                             (refcounted), debounced checktime, skips modified buffers;
-                             follow edits (recursive watcher, see Status)
-  picker.lua                 the yard as fzf-lua pickers (replaced yard.lua, Oct 2026):
-                             view "worktrees"/"agents" (Tab reopens the other), one
-                             `actions` list per view {key (name in keys.yard), label,
-                             run(row), any_row?, stay?}; stay = fzf-lua `reload` action
-                             (picker stays open), else the picker closes and run() is
-                             scheduled (menus/questions reopen the picker via
-                             reopen()). Lines = colored text + "\t" + row key, shown
-                             with --with-nth=1; lines(view, cb) also gives the start
-                             index (keymap.fzf load = pos(n)). Preview: tmux
-                             capture-pane (agents), git status + log (worktrees).
-                             Keys are fzf names; actions use alt- (plain letters
-                             search). No live update while open (Ctrl-R).
+                             (refcounted), debounced checktime, skips modified buffers
+  picker.lua                 the yard: ONE fzf-lua picker, views by prefix (Oct 2026,
+                             replaced yard.lua). Built like fzf-lua's global picker:
+                             fzf_exec(contents, {_start=false}) gives (cmd, opts), then
+                             `--bind start/change:+transform:<lua>` (shell.stringify_data,
+                             "{q}") returns reload(cmd)+change-header(..)+search:<rest>
+                             when the prefix changes the view (state.view), else
+                             search:<rest>; `load:+transform` gives pos(start). One
+                             contents function reads state.view. Rows by key in
+                             state.rows (line = colored text + TAB + key, --with-nth=1).
+                             `actions` per KIND (worktree/agent/project) {key, label,
+                             run(row), any_row?, stay?}; fzf actions bound once per key
+                             name, dispatch on the row's kind (empty view: state.view's
+                             kind); keys with any stay action are reload actions
+                             (non-stay kinds hide the picker, then run). Preview: tmux
+                             capture-pane (agent), git status + log, or `ls` outside
+                             git. M.lines(view, cb), M.project_lines(on_line, on_done).
+  projects.lua               (also) root(dir) (a linked worktree's `.git` file gives
+                             the main repo), remember/recent, cached, find(on_found,
+                             on_done) = fd --hidden --no-ignore -t d --prune -g .git
+                             (streamed, cached)
   view.lua                   the viewer (split + statusline with agent tabs, cycle,
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
-                             (live: live reload + follow edits; arrival: arrival rules + peek;
+                             (live: live reload; arrival: arrival rules + peek (fake viewer);
                              history: earlier sessions from a fake home;
                              launch: linking after a start; picker: lines + keys
                              (skipped without fzf-lua);
@@ -229,9 +250,10 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   worktree's earlier sessions (all installed agents, newest first, running ones
   left out), so agents can be stopped (`D`) to free memory and resumed later.
 - **The yard is an fzf-lua picker** (Oct 2026, replaced the own float yard.lua):
-  see picker.lua in the module map. Keys in `keys.yard` (fzf names). Lost vs the
-  old yard: 1-9 quick picks, live redraw while open, Shift+Enter (now alt-enter).
-  Gained: fuzzy search, previews (agent screen, git status).
+  see picker.lua in the module map. Keys in `keys.yard` (fzf names). Views by
+  prefix (& worktrees, * agents, % projects), no Tab. Lost vs the old yard:
+  1-9 quick picks, live redraw while open, Shift+Enter (now alt-enter). Gained:
+  fuzzy search, previews (agent screen, git status), projects anywhere.
 - (Old) **Compact yard** (replaced part 1): one float sized to its content (width
   50..90, height ≤ 60% of lines), centered, opens in normal mode. Two views,
   Tab toggles, remembered while Neovim runs (`yard.view` = first view):
@@ -284,23 +306,17 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - **Live reload** (`live_reload = true`): open files follow the agent's edits,
   also while in terminal mode. Folder watchers (see live.lua) also catch
   rename-replace saves.
-- **Follow edits** (`follow_edits(on?)`, `following_edits()`, `:Switchyard
-  follow-edits`, mapped Cmd+Shift+F; FOLLOW badge in my statusline): recursive
-  fs_event on the worktree (macOS/Windows only), `.git/` dropped, 150 ms debounce,
-  one `git check-ignore --stdin`, latest file shown in the editor window without
-  focus; cursor on the first changed line via `vim.diff` against live reload's
-  snapshot / the loaded buffer / `git show :./path`. Never replaces a modified
-  buffer. Moves along on DirChanged. `link_here()` (Cmd+Shift+H) links an agent
-  here after a peek.
-- **Peek**: Shift+Enter in the yard (`keys.yard.peek`) switches but keeps the
-  link: `sessions.keep_link_for(dir)` is a one-time hold that `on_arrival`
+- **Follow edits**: removed (Oct 2026). `link_here()` (Cmd+Shift+H) links an
+  agent here after a peek.
+- **Peek**: Alt-Enter in the yard (`keys.yard.alt_activate`) switches but keeps the
+  link (and the viewer): `sessions.keep_link_for(dir)` is a one-time hold that `on_arrival`
   consumes; cleared again when the switch is blocked.
 - **Switching from any window**: `projects.switch` starts from a fresh window
   (`botright new` + `only`), so switching while focus is in the tree, the viewer
   or a float no longer eats the tree window.
 - Checked: `tmux.new` cds inside the shell line; `menu.lua` used by
   `launch.pick` and the viewer's choice; `ui.lua` used by yard.lua; config has
-  `viewer.width`, `terminal`, `empty_worktree`, `live_reload`.
+  `viewer.width`, `terminal`, `live_reload`, `projects`.
 
 - **Viewer terminal options from sidekick.nvim** (Oct 2026): the viewer split
   glitched sometimes. sidekick.nvim was tried as the viewer and then dropped

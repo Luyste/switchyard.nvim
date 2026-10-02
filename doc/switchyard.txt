@@ -15,7 +15,7 @@ CONTENTS                                                 *switchyard-contents*
   7. The viewer ......................................... |switchyard-viewer|
   8. The prompt builder ................................. |switchyard-prompt|
   9. Dispatch ......................................... |switchyard-dispatch|
- 10. Live reload and follow edits ......................... |switchyard-live|
+ 10. Live reload ...................................... |switchyard-live|
  11. Statusline ..................................... |switchyard-statusline|
  12. Functions ........................................... |switchyard-api|
  13. Configuration ...................................... |switchyard-config|
@@ -66,6 +66,7 @@ The link ~
 
 - fzf-lua (https://github.com/ibhagwan/fzf-lua) and fzf: the yard is an
   fzf-lua picker.
+- fd: finds the projects (`%` in the yard).
 
 Run `:checkhealth switchyard` to see what is found (|switchyard-health|).
 
@@ -116,8 +117,6 @@ A starting point: >lua
       { desc = "switchyard: dispatch a task" })
     map({ "n", "t" }, "<leader>yh", sy("link_here"),
       { desc = "switchyard: link an agent in this worktree" })
-    map({ "n", "t" }, "<leader>yf", sy("follow_edits"),
-      { desc = "switchyard: follow the agent's edits" })
     map("n", "<leader>yo", sy("open_external"),
       { desc = "switchyard: agent in an external terminal" })
 <
@@ -131,37 +130,37 @@ name ever changes.
 ==============================================================================
 5. THE YARD                                                  *switchyard-yard*
 
-Open it with |switchyard.open_yard()| or |:Switchyard|: an fzf-lua picker,
-starting on the current worktree (or on the linked agent in the agents view).
-Type to search. The preview shows `git status` and recent commits for a
-worktree, and the agent's screen for an agent. The first view is set by
-|switchyard-config-yard.view|.
-
-The yard shows one project: the worktrees and agents of the repository you
-are in. For another repository, open Neovim there.
+Open it with |switchyard.open_yard()| or |:Switchyard|: one fzf-lua picker
+with three views. Type a prefix first to choose one; without a prefix you
+get |switchyard-config-yard.view|. `%sho` searches the projects for "sho".
 
 Views ~
                                                    *switchyard-yard-worktrees*
-Worktrees view   Every worktree of the repository. `@` marks the current
+& worktrees      Every worktree of the repository. `@` marks the current
                  one, `● <name>` (green) the worktree of the linked agent
                  (the one your prompts go to), `● n` the number of agents
-                 in a worktree.
+                 in a worktree. Outside a repository: the folder itself.
+                 Preview: `git status` and recent commits.
                                                       *switchyard-yard-agents*
-Agents view      Every agent of the repository, with its worktree. `●`
-                 marks the linked agent.
+* agents         Every agent of the repository, with its worktree. `●`
+                 marks the linked agent. Preview: the agent's screen.
+                                                    *switchyard-yard-projects*
+% projects       The current project, pinned folders, projects with agents
+                 (`● n`), recent ones, then every git repository `fd` finds
+                 under the roots (|switchyard-config-projects|). The last
+                 scan is cached, so the list shows at once.
 
 Keys ~
                                                         *switchyard-yard-keys*
 The names in brackets are the entries of |switchyard-config-keys|. Plain
 letters type into the search, so actions use Alt (macOS: Option as Meta).
+Keys act on the kind of row under the cursor.
 
-Key         Worktrees view                Agents view ~
+Key         Worktree                      Agent ~
 <CR>        switch the editor there       go to: switch to its worktree
  (activate)                               and link it
-<M-CR>      peek: switch, keep the        link it, stay where you are
- (alt_activate) current link              (the picker stays open)
-<Tab>       agents view                   worktrees view
- (toggle_view)
+<M-CR>      peek: switch, keep the link   link it, stay where you are
+ (alt_activate) and the viewer            (the picker stays open)
 <M-n> (new) new worktree                  new agent in a worktree
 <M-d>       dispatch a task               dispatch a task
  (dispatch)
@@ -185,6 +184,9 @@ Key         Worktrees view                Agents view ~
  (refresh)
 <F1>        every key                     same
 
+On a project: <CR> switches to it (its main worktree), <M-CR> peeks, <M-a>
+starts an agent there (the editor stays), <M-y> copies the path.
+
 Actions that remove or stop something ask for confirmation (the picker
 closes for the question and comes back after). With several agents
 installed, starting an agent asks which one.
@@ -197,15 +199,15 @@ which agent the editor follows.
 
 Arrival rules ~
                                                     *switchyard-arrival-rules*
-When the editor arrives in a worktree (at startup, or when the global
-current directory changes):
+When the editor arrives in a folder (the global current directory
+changes): the editor goes with the agent of where it is.
 
-- one agent there: the editor links to it, silently;
-- several agents: if you are already linked to one of them, the link stays;
-  otherwise it goes to the one you viewed last in the viewer, else the most
-  recently started;
-- no agent: what happens is set by |switchyard-config-empty_worktree|. By
-  default the link stays.
+- an agent there: the editor links to it and shows it in the viewer. With
+  several, the one you used last (linked or viewed), else the most recently
+  started;
+- no agent: the editor unlinks and the viewer closes.
+
+At startup only the link is set; the viewer stays closed.
 
 Following ~
                                                         *switchyard-following*
@@ -219,9 +221,9 @@ servers. It refuses when a buffer has unsaved changes.
 
 Peeking ~
                                                              *switchyard-peek*
-Peek (<S-CR> in the worktrees view) switches the editor without touching the
-link: look around in worktree B, copy a snippet, and send it to your agent
-in A. Changed your mind? |switchyard.link_here()| links an agent of the
+Peek (<M-CR> on a worktree or project, also a folder outside git) switches
+the editor without touching the link or the viewer: look around in worktree
+B, copy a snippet, and send it to your agent in A. Changed your mind? |switchyard.link_here()| links an agent of the
 worktree you are in.
 
 ==============================================================================
@@ -293,7 +295,7 @@ where they are; the new agent shows up in the yard.
 In visual mode, the selection comes along as context.
 
 ==============================================================================
-10. LIVE RELOAD AND FOLLOW EDITS                             *switchyard-live*
+10. LIVE RELOAD                                             *switchyard-live*
 
 Live reload ~
                                                       *switchyard-live-reload*
@@ -301,26 +303,13 @@ With |switchyard-config-live_reload| on (the default), files open in Neovim
 reload when an agent changes them, also while you are typing in the viewer.
 Buffers with unsaved changes are never touched.
 
-Follow edits ~
-                                                     *switchyard-follow-edits*
-|switchyard.follow_edits()| or `:Switchyard follow-edits` turns following
-edits on or off. While it is on, whenever the agent changes a file in your
-worktree, it opens in your editor window with the cursor on the change,
-without taking focus from the viewer. Ignored files (.gitignore) are
-skipped.
-
-This needs recursive folder watching, which Neovim offers on macOS and
-Windows.
-
 ==============================================================================
 11. STATUSLINE                                         *switchyard-statusline*
 
-Three functions for your statusline. They only read cached values (no file
+Two functions for your statusline. They only read cached values (no file
 access), so they are cheap to call on every redraw: >lua
     -- "pi-shoebox" or "pi-shoebox (in other-worktree)"
     require("switchyard").status()
-    -- true while following edits
-    require("switchyard").following_edits()
     -- "DRAFT" or "DRAFT 2" while a prompt draft waits
     require("switchyard").draft_status()
 <
@@ -381,20 +370,11 @@ dispatch()
     Open the prompt builder for a dispatch (|switchyard-dispatch|). In
     visual mode, add the selection as context first.
 
-                                                   *switchyard.follow_edits()*
-follow_edits({on})
-    Turn following edits on (true) or off (false). Without {on}, toggle.
-    See |switchyard-follow-edits|.
-
                                                          *switchyard.status()*
 status()
     For statuslines: the linked agent's tmux session name, with
     " (in <worktree>)" when it works in another worktree.
     Empty string when not linked.
-
-                                                *switchyard.following_edits()*
-following_edits()
-    For statuslines: true while following edits.
 
                                                    *switchyard.draft_status()*
 draft_status()
@@ -409,11 +389,17 @@ Pass options to |switchyard.setup()|. The defaults: >lua
     require("switchyard").setup({
       agents = { "pi", "claude", "codex" },
       follow = true,
-      empty_worktree = "keep",
       terminal = "auto",
       live_reload = true,
       yard = {
         view = "worktrees",
+        prefixes = { worktrees = "&", agents = "*", projects = "%" },
+      },
+      projects = {
+        roots = { "~" },
+        exclude = { "Library", "node_modules", ".cache", ".Trash",
+          ".local/share/nvim", ".oh-my-zsh", ".claude/plugins" },
+        pinned = {},
       },
       viewer = {
         width = 0.45,
@@ -421,7 +407,7 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       keys = {
         yard = {
           activate = "enter", alt_activate = "alt-enter",
-          toggle_view = "tab", refresh = "ctrl-r", new = "alt-n",
+          refresh = "ctrl-r", new = "alt-n",
           remove = "ctrl-x", fork = "alt-f", dispatch = "alt-d",
           start_agent = "alt-a", continue_agent = "alt-c",
           copy_path = "alt-y", view = "alt-v", external = "alt-g",
@@ -466,14 +452,6 @@ follow ~
     Follow the linked agent when it moves to another worktree
     (|switchyard-following|).
 
-                                            *switchyard-config-empty_worktree*
-empty_worktree ~
-    Default: `"keep"`
-    What happens to the link when the editor arrives in a worktree without
-    agents:
-      "keep"    keep the link (the statusline shows where the agent is)
-      "unlink"  remove the link
-
                                                   *switchyard-config-terminal*
 terminal ~
     Default: `"auto"`
@@ -495,7 +473,23 @@ live_reload ~
                                                  *switchyard-config-yard.view*
 yard.view ~
     Default: `"worktrees"`
-    The view the yard opens in first: "worktrees" or "agents".
+    The view without a prefix: "worktrees", "agents" or "projects".
+
+                                             *switchyard-config-yard.prefixes*
+yard.prefixes ~
+    Default: `{ worktrees = "&", agents = "*", projects = "%" }`
+    Typed first in the yard's search, a prefix shows that view. Avoid fzf's
+    own search characters (^ $ ' ! |).
+
+                                                  *switchyard-config-projects*
+projects ~
+    The projects view (`%`). Lists are replaced, not merged.
+      roots     where `fd` looks for git repositories. Default: `{ "~" }`
+      exclude   folder names or paths `fd` skips (passed as --exclude)
+      pinned    folders always listed, git or not, e.g. a config folder
+                kept in a bare dotfiles repository: >lua
+                  pinned = { "~/.config/nvim" }
+<
 
                                               *switchyard-config-viewer.width*
 viewer.width ~
@@ -510,7 +504,6 @@ keys.yard ~
     Name            Default     Worktrees view / agents view ~
     activate        enter       switch / go to (switch and link)
     alt_activate    alt-enter   peek / link only
-    toggle_view     tab         switch between the views
     refresh         ctrl-r      refresh
     new             alt-n       new worktree / new agent in a worktree
     remove          ctrl-x      remove worktree / stop agent
@@ -531,8 +524,8 @@ keys.yard ~
 :Switchyard
     Open the yard (|switchyard.open_yard()|).
 
-:Switchyard follow-edits
-    Toggle following edits (|switchyard.follow_edits()|).
+:Switchyard {folder}
+    Switch the editor to {folder} (with completion), any folder.
 
 ==============================================================================
 15. EVENTS                                                 *switchyard-events*
