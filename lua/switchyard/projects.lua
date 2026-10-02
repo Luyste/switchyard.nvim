@@ -37,7 +37,8 @@ function M.switch(dir)
 		return false
 	end
 
-	local viewer_open = require("switchyard.view").is_open()
+	-- Before any window closes: integrations note what was open
+	vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSwitching", data = { from = from, to = dir } })
 
 	-- Back to a single window with an empty buffer. A fresh window, because the
 	-- current one may be a file tree, a terminal or a float: `only` + `enew`
@@ -67,14 +68,6 @@ function M.switch(dir)
 		pattern = "SwitchyardSwitched",
 		data = { from = from, to = dir },
 	})
-
-	-- `only` closed the viewer: bring it back once the arrival rules have run
-	-- (they're scheduled from DirChanged, so this runs after them)
-	if viewer_open then
-		vim.schedule(function()
-			require("switchyard.view").sync(true)
-		end)
-	end
 	return true
 end
 
