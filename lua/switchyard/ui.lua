@@ -31,6 +31,7 @@ end
 
 function M.set_highlights()
 	badge("SwitchyardNormalBadge", "DiagnosticOk")
+	vim.api.nvim_set_hl(0, "SwitchyardHiddenCursor", { blend = 100, nocombine = true })
 	-- Some themes (vague) make PmenuSel `reverse` without colors: on a row with
 	-- colored text that turns every colored piece into a block. Use Visual then.
 	local pmenu_sel = vim.api.nvim_get_hl(0, { name = "PmenuSel", link = false })
@@ -42,6 +43,7 @@ function M.set_highlights()
 		SwitchyardSymbols = "DiagnosticWarn",
 		SwitchyardAgent = "Statement",
 		SwitchyardLinked = "DiagnosticOk",
+		SwitchyardMatch = "Special",
 		SwitchyardKey = "Special",
 		SwitchyardDanger = "DiagnosticError",
 	}
@@ -82,6 +84,24 @@ function M.hints(buf, text)
 	vim.api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
 	local last = vim.api.nvim_buf_line_count(buf) - 1
 	vim.api.nvim_buf_set_extmark(buf, hint_ns, last, 0, { virt_lines = { { { text, "SwitchyardDim" } } } })
+end
+
+local saved_guicursor = nil
+
+function M.hide_cursor()
+	if saved_guicursor then
+		return
+	end
+	saved_guicursor = vim.o.guicursor
+	vim.o.guicursor = "a:SwitchyardHiddenCursor"
+end
+
+function M.show_cursor()
+	if not saved_guicursor then
+		return
+	end
+	vim.o.guicursor = saved_guicursor
+	saved_guicursor = nil
 end
 
 return M

@@ -500,8 +500,7 @@ function M.open()
 			callback = function()
 				vim.schedule(function()
 					local current = vim.api.nvim_get_current_win()
-					local ft = vim.bo[vim.api.nvim_win_get_buf(current)].filetype
-					local to_menu = ft == "switchyard" or ft == "fzf" -- a question on top of it
+					local to_menu = vim.bo[vim.api.nvim_win_get_buf(current)].filetype == "switchyard"
 					if valid_win(state.win) and current ~= state.win and not to_menu then
 						M.close()
 					end

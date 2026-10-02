@@ -1,118 +1,211 @@
--- Small questions, in fzf-lua like the yard: a choice from a list
--- (`open`), or one line of text (`input`). Type to filter or edit, Enter
--- confirms, Esc cancels. Focus goes back where it was, typing again when you
--- were typing (the prompt builder).
+local ui = require("switchyard.ui")
+
 local M = {}
 
-local function color(hl, text)
-	return (require("fzf-lua.utils").ansi_from_hl(hl, text))
+local ns = vim.api.nvim_create_namespace("switchyard_menu")
+
+-- Where a window of `width` x `height` goes: opened from a float (the yard),
+-- right below it, or above when there's no room, so both stay readable.
+-- Otherwise centered. Returns row, col.
+local function place(from, width, height)
+	local row = math.max(1, math.floor((vim.o.lines - height) / 2) - 3)
+	local col = math.floor((vim.o.columns - width) / 2)
+	local anchor = vim.api.nvim_win_get_config(from)
+	if anchor.relative ~= "" then
+		local below = anchor.row + anchor.height + 2
+		if below + height + 2 <= vim.o.lines - 2 then
+			row = below
+		elseif anchor.row - height - 2 >= 0 then
+			row = anchor.row - height - 2
+		end
+		col = anchor.col
+	end
+	return row, col
 end
 
--- Remember the window (and insert mode) to return to; returns that return
-local function remember()
-	local from = vim.api.nvim_get_current_win()
-	local typing = vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
-	vim.cmd.stopinsert()
-	return function()
-		if vim.api.nvim_win_is_valid(from) then
-			vim.api.nvim_set_current_win(from)
-			if typing then
-				vim.cmd("startinsert!")
-			end
-		end
-	end
-end
-
--- A small fzf-lua window for `count` lines, without preview or border title
--- (Neovide draws over border titles). `done(value)` runs once: with the
--- action's value, or nil when closed without one.
-local function show(lines, opts, on_enter, done)
-	require("switchyard.ui").set_highlights()
-	local back = remember()
-	local finished = false
-	local function finish(value)
-		if finished then
-			return
-		end
-		finished = true
-		back()
-		done(value)
-	end
-	local width = 20
-	for _, l in ipairs(lines) do
-		width = math.max(width, vim.fn.strdisplaywidth((l:gsub("\27%[[%d;]*m", ""):gsub("\t.*$", ""))) + 6)
-	end
-	require("fzf-lua").fzf_exec(lines, {
-		prompt = opts.title .. "❯ ",
-		query = opts.default,
-		no_hide = true, -- a question is answered or gone, never kept for resume
-		previewer = false,
-		fzf_opts = vim.tbl_extend("force", {
-			["--delimiter"] = "\t",
-			["--with-nth"] = "1",
-			["--no-multi"] = true,
-			["--no-sort"] = true, -- keep the list's order while filtering
-		}, opts.fzf_opts or {}),
-		actions = {
-			enter = function(selected, o)
-				local value = on_enter(selected, o)
-				vim.schedule(function()
-					finish(value)
-				end)
-			end,
-		},
-		winopts = {
-			title = false,
-			height = #lines + 3, -- + prompt, separator and border
-			width = math.min(math.max(width, #opts.title + 30), vim.o.columns - 4),
-			row = 0.35,
-			preview = { hidden = true },
-			-- Runs before an action: wait a moment to tell a cancel from a choice
-			on_close = function()
-				vim.schedule(function()
-					vim.schedule(function()
-						finish(nil)
-					end)
-				end)
-			end,
-		},
+-- A switchyard float holding `lines`, placed for window `from`, with the title
+-- and key hints on lines of their own. Returns buf, win.
+local function float(from, width, lines, title, hints)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].filetype = "switchyard"
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	local height = #lines + 2 -- + the title line and the hints line
+	local row, col = place(from, width, height)
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		width = width,
+		height = height,
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded",
+		zindex = 100, -- above the yard (50): same-level floats overlap badly in Neovide
 	})
+	ui.title(win, { { " switchyard ", "SwitchyardHeading" }, { "· " .. title, "SwitchyardDim" } })
+	ui.hints(buf, hints)
+	return buf, win
 end
 
--- Choose from a list.
--- opts.title: the prompt
--- opts.items: list of { label, action, key? (shown dim after it), danger? }
+-- Close float `win` and go back to window `from`
+local function leave(win, from)
+	if vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_close(win, true)
+	end
+	if vim.api.nvim_win_is_valid(from) then
+		vim.api.nvim_set_current_win(from)
+	end
+end
+
+-- Show a menu in the yard's style.
+-- opts.title: the title line
+-- opts.items: list of { label, action, key? (shown on the right), danger? }
 -- opts.on_cancel: optional, called when closed without choosing
 function M.open(opts)
-	local lines = {}
-	for i, item in ipairs(opts.items) do
-		local label = item.danger and color("SwitchyardDanger", item.label) or item.label
-		local key = item.key and ("  " .. color("SwitchyardDim", item.key)) or ""
-		lines[i] = label .. key .. "\t" .. i
+	ui.set_highlights()
+	local from = vim.api.nvim_get_current_win() -- focus goes back here
+	-- Opened while typing (the prompt builder): the menu works in normal mode,
+	-- else Ctrl-N/Ctrl-P are insert-mode completion (E21 on a read-only buffer)
+	local was_typing = vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
+	vim.cmd.stopinsert()
+	local items = opts.items
+
+	local label_width = 0
+	for _, item in ipairs(items) do
+		label_width = math.max(label_width, vim.fn.strdisplaywidth(item.label))
 	end
-	show(lines, { title = opts.title }, function(selected)
-		return tonumber((selected[1] or ""):match("\t(%d+)$"))
-	end, function(index)
-		local item = index and opts.items[index]
-		if item then
-			item.action()
-		elseif opts.on_cancel then
-			opts.on_cancel()
+	local width = math.min(math.max(label_width + 14, 44), math.floor(vim.o.columns * 0.7))
+
+	-- Lines: " 1  label ............ key"
+	local lines, marks = {}, {}
+	for i, item in ipairs(items) do
+		local number = ((#items > 9 and "%2d" or " %d") .. "  "):format(i) -- aligned past 9
+		local key = item.key and (item.key .. " ") or ""
+		local gap = width - vim.fn.strdisplaywidth(number .. item.label) - vim.fn.strdisplaywidth(key)
+		lines[i] = number .. item.label .. string.rep(" ", math.max(gap, 1)) .. key
+		marks[i] = {
+			{ 0, #number, "SwitchyardDim" },
+			item.danger and { #number, #number + #item.label, "SwitchyardDanger" } or nil,
+			item.key and { #lines[i] - #key, #lines[i], "SwitchyardKey" } or nil,
+		}
+	end
+
+	local buf, win = float(from, width, lines, opts.title, " ⏎ choose  ^N/^P move  1-9 pick  esc cancel")
+	vim.bo[buf].modifiable = false
+	for i, line_marks in ipairs(marks) do
+		for _, m in pairs(line_marks) do
+			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, m[1], { end_col = m[2], hl_group = m[3] })
 		end
+	end
+	vim.wo[win].cursorline = true
+	vim.wo[win].winhighlight = "CursorLine:SwitchyardSelection"
+	ui.hide_cursor()
+
+	local done = false
+	local function close()
+		if done then
+			return
+		end
+		done = true
+		ui.show_cursor()
+		leave(win, from)
+		if was_typing and vim.api.nvim_get_current_win() == from then
+			vim.cmd("startinsert!") -- typing on where you were
+		end
+	end
+	local function choose(index)
+		local item = items[index or vim.api.nvim_win_get_cursor(win)[1]]
+		close()
+		if item then
+			vim.schedule(item.action)
+		end
+	end
+	local function cancel()
+		close()
+		if opts.on_cancel then
+			vim.schedule(opts.on_cancel)
+		end
+	end
+
+	local function map(key, fn)
+		vim.keymap.set("n", key, fn, { buffer = buf, nowait = true, silent = true })
+	end
+	map("<CR>", function()
+		choose()
 	end)
+	map("<C-n>", "j")
+	map("<C-p>", "k")
+	map("q", cancel)
+	map("<Esc>", cancel)
+	for i = 1, math.min(#items, 9) do
+		map(tostring(i), function()
+			choose(i)
+		end)
+	end
+
+	-- Only up and down; cursor hidden while the menu has focus
+	vim.api.nvim_create_autocmd("CursorMoved", {
+		buffer = buf,
+		callback = function()
+			local pos = vim.api.nvim_win_get_cursor(0)
+			if pos[2] ~= 0 then
+				vim.api.nvim_win_set_cursor(0, { pos[1], 0 })
+			end
+		end,
+	})
+	vim.api.nvim_create_autocmd("BufEnter", { buffer = buf, callback = ui.hide_cursor })
+	vim.api.nvim_create_autocmd("BufLeave", { buffer = buf, callback = ui.show_cursor })
+	vim.api.nvim_create_autocmd("BufWipeout", { buffer = buf, callback = ui.show_cursor })
 end
 
--- Ask for one line of text: the search line is the input (fzf doesn't filter
--- here). opts.title, opts.default. callback(text), or callback(nil) when
--- cancelled.
+-- Ask for one line of text in the yard's style (instead of vim.ui.input at the
+-- bottom of the screen). opts.title, opts.default. callback(text), or
+-- callback(nil) when cancelled.
 function M.input(opts, callback)
-	show({ color("SwitchyardDim", "⏎ confirm  esc cancel") }, {
-		title = opts.title,
-		default = opts.default,
-		fzf_opts = { ["--disabled"] = true },
-	}, function(_, o)
-		return vim.trim(o.last_query or "")
-	end, callback)
+	ui.set_highlights()
+	local from = vim.api.nvim_get_current_win()
+	local default = opts.default or ""
+	local width = math.min(math.max(44, vim.fn.strdisplaywidth(default) + 10), math.floor(vim.o.columns * 0.7))
+
+	local buf, win = float(from, width, { default }, opts.title, " ⏎ confirm  esc cancel")
+
+	local done = false
+	local function finish(value)
+		if done then
+			return
+		end
+		done = true
+		vim.cmd.stopinsert()
+		leave(win, from)
+		vim.schedule(function()
+			callback(value)
+		end)
+	end
+	local function confirm()
+		finish(vim.trim(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or ""))
+	end
+	local function map(modes, key, fn)
+		vim.keymap.set(modes, key, fn, { buffer = buf, nowait = true, silent = true })
+	end
+	map({ "i", "n" }, "<CR>", confirm)
+	map("i", "<Esc>", function()
+		finish(nil)
+	end)
+	map("n", "<Esc>", function()
+		finish(nil)
+	end)
+	map("n", "q", function()
+		finish(nil)
+	end)
+	-- Clicking elsewhere cancels
+	vim.api.nvim_create_autocmd("WinLeave", {
+		buffer = buf,
+		once = true,
+		callback = function()
+			finish(nil)
+		end,
+	})
+	vim.cmd("startinsert!")
 end
 
 return M
