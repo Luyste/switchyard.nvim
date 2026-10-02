@@ -54,10 +54,11 @@ projects.cached = function()
 end
 require("switchyard.config").options.projects.pinned = { root .. "/notes" }
 
+local yard_win -- below
 local function shown()
 	return table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(yard_win()), 0, -1, false), "|")
 end
-function yard_win()
+yard_win = function()
 	for _, w in ipairs(vim.api.nvim_list_wins()) do
 		local config = vim.api.nvim_win_get_config(w)
 		if config.relative ~= "" and config.height > 1 then
@@ -91,6 +92,10 @@ end
 
 yard.open()
 shows("feature/login%-form")
+press("2") -- agents, then back with Tab Tab (agents → projects → worktrees)
+shows("No agents running")
+press("<Tab><Tab>")
+shows("feature/login%-form")
 -- Fuzzy: "flf" matches feature/login-form (letters in order), not fix-tests
 filter("flf")
 assert(count() == "1 / 3", tostring(count()))
@@ -98,8 +103,8 @@ assert(shown():find("login") and not shown():find("fix%-tests"), shown())
 press("A<Esc>") -- fed keys leave insert mode: back in, then Esc clears the filter
 shows("fix%-tests")
 
--- Tab: agents, then projects (the current one, pinned, then what fd finds)
-press("<Tab><Tab>")
+-- 3: projects (the current one, pinned, then what fd finds)
+press("3")
 shows("other")
 assert(shown():find("@ repo") and shown():find("notes"), shown())
 filter("oth")
@@ -110,7 +115,7 @@ yard.close()
 -- Outside git: the folder itself is the one worktree
 vim.cmd.cd(root .. "/notes")
 yard.open()
-press("<Tab>") -- back to worktrees (the view is remembered: projects → worktrees)
+press("1") -- worktrees (the yard remembered projects)
 shows("@ notes")
 yard.close()
 

@@ -266,13 +266,14 @@ local function project_rows(all)
 end
 
 -- One line: a left part (builder) and an optional right part { text, hl }
-local function number(b, i)
-	b.add(i <= 9 and (" " .. i .. " ") or "   ", "SwitchyardDim")
+-- The left margin of every row
+local function number(b)
+	b.add(" ")
 end
 
 local function worktree_line(i, row, linked)
 	local wt, b = row.worktree, builder()
-	number(b, i)
+	number(b)
 	b.add(wt.current and "@ " or "  ", "SwitchyardCurrent")
 	add_matched(b, wt.branch, wt.current and "SwitchyardCurrent" or nil)
 	if wt.symbols ~= "" then
@@ -293,7 +294,7 @@ end
 
 local function project_line(i, row)
 	local b = builder()
-	number(b, i)
+	number(b)
 	b.add(row.current and "@ " or "  ", "SwitchyardCurrent")
 	add_matched(b, row.name, row.current and "SwitchyardCurrent" or nil)
 	if row.agents > 0 then
@@ -305,7 +306,7 @@ end
 local function agent_line(i, row, linked)
 	local s, b = row.session, builder()
 	local is_linked = s.pid == linked
-	number(b, i)
+	number(b)
 	b.add("● ", is_linked and "SwitchyardLinked" or "SwitchyardAgent")
 	add_matched(b, sessions().name(s), is_linked and "SwitchyardLinked" or nil)
 	return b, { row.where, "SwitchyardDim" }
@@ -315,15 +316,25 @@ end
 -- Title, footer, layout
 ---------------------------------------------------------------------------
 
+local views = { "worktrees", "agents", "projects" } -- in key order: 1, 2, 3
+
+-- The title: the views as tabs with their keys, the shown one highlighted
 local function title()
-	return { { " switchyard ", "SwitchyardHeading" }, { "· " .. view .. " ", "SwitchyardDim" } }
+	local parts = { { " switchyard  ", "SwitchyardHeading" } }
+	local k = keys()
+	for _, name in ipairs(views) do
+		local shown = name == view
+		table.insert(parts, { k["view_" .. name] .. " ", shown and "SwitchyardKey" or "SwitchyardDim" })
+		table.insert(parts, { name .. "  ", shown and "SwitchyardHeading" or "SwitchyardDim" })
+	end
+	return parts
 end
 
 local function hints(width)
 	local text = ({
-		worktrees = " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . actions  ? keys",
-		agents = " ⏎ go to  ⇧⏎ link  ⇥ projects  / filter  . actions  ? keys",
-		projects = " ⏎ switch  ⇧⏎ peek  a agent  ⇥ worktrees  / filter  ? keys",
+		worktrees = " ⏎ switch  ⇧⏎ peek  a agent  / filter  . actions  ? keys",
+		agents = " ⏎ go to  ⇧⏎ link  v view  / filter  . actions  ? keys",
+		projects = " ⏎ switch  ⇧⏎ peek  a agent  / filter  . actions  ? keys",
 	})[view]
 	return truncate(text, width - 1)
 end
@@ -515,12 +526,16 @@ end
 
 local order = { worktrees = "agents", agents = "projects", projects = "worktrees" }
 
-local function toggle_view()
-	view = order[view]
+local function show_view(name)
+	view = name
 	if view == "projects" then
 		load_projects()
 	end
 	render()
+end
+
+local function toggle_view()
+	show_view(order[view])
 end
 
 -- Worktrees and agents, both looked at again (Ctrl-R, and on opening)
@@ -910,9 +925,19 @@ local function open_menu(all_keys)
 		end
 	end
 	if all_keys then
-		local other = order[view]
+		for _, name in ipairs(views) do
+			if name ~= view then
+				table.insert(items, {
+					label = name .. " view",
+					key = keys()["view_" .. name],
+					action = function()
+						show_view(name)
+					end,
+				})
+			end
+		end
 		for _, nav in ipairs({
-			{ "toggle_view", other .. " view", toggle_view },
+			{ "toggle_view", "next view", toggle_view },
 			{ "filter", "filter", start_filter },
 			{ "refresh", "refresh", refresh },
 			{ "close", "close the yard", M.close },
@@ -982,11 +1007,9 @@ local function set_keymaps()
 			run(name)
 		end)
 	end
-	for i = 1, 9 do
-		map(tostring(i), function()
-			if state.rows[i] then
-				activate(state.rows[i])
-			end
+	for _, name in ipairs(views) do
+		map(k["view_" .. name], function()
+			show_view(name)
 		end)
 	end
 	map(k.actions, function()

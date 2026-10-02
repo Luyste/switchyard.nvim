@@ -86,8 +86,9 @@ anything, then **inspect the actual code**: some items below are marked
     on the current agent, whatever the worktree contains (statusline shows
     `agent (in <other worktree>)`). Used to grab context from B and send it to
     agent A (with the prompt builder's cross-worktree paths).
-- **Three yard views, one meaning per key:** worktrees → agents → projects
-  (Tab cycles; `yard.view` = first). Keys act on what the current view shows
+- **Three yard views, one meaning per key:** 1 worktrees, 2 agents, 3
+  projects (`keys.yard.view_*`; the title shows them as tabs; Tab cycles;
+  `yard.view` = first; rows have no numbers / 1-9 picks any more). Keys act on what the current view shows
   (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
   Enter on an agent = "go to" (switch + link); Shift+Enter = link only. `/`
   filters fuzzily (`vim.fn.matchfuzzypos`, best score first, matched letters

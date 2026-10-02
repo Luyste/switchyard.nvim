@@ -130,8 +130,9 @@ name ever changes.
 
 Open it with |switchyard.open_yard()| or |:Switchyard|. It opens in normal
 mode on the current worktree (or the linked agent, or the current project).
-The first view is set by |switchyard-config-yard.view|. <Tab> cycles the
-views.
+The first view is set by |switchyard-config-yard.view|. The title shows the
+views as tabs with their keys: 1 worktrees, 2 agents, 3 projects. <Tab>
+cycles them.
 
 Views ~
                                                    *switchyard-yard-worktrees*
@@ -155,7 +156,8 @@ The names in brackets are the entries of |switchyard-config-keys|.
 Key         Worktrees view                Agents view ~
 <CR>        switch the editor there       go to: switch to its worktree
  (activate)                               and link it
-1-9         same as <CR> for that row     same as <CR> for that row
+1, 2, 3     worktrees, agents, projects   same
+ (view_worktrees, view_agents, view_projects)
 <S-CR>      peek: switch, keep the link   link it, stay where you are
  (alt_activate) and the viewer
 <Tab>       agents view                   projects view
@@ -189,7 +191,7 @@ q (close),  close the yard                same
 
 In the projects view: <CR> switches to the project (its main worktree),
 <S-CR> peeks, `a` starts an agent there (the editor stays), `y` copies the
-path, <Tab> goes back to the worktrees view.
+path.
 
 <C-n>/<C-p> and j/k move the selection.
 
@@ -429,6 +431,7 @@ Pass options to |switchyard.setup()|. The defaults: >lua
         yard = {
           activate = "<CR>", alt_activate = "<S-CR>",
           toggle_view = "<Tab>", filter = "/", refresh = "<C-r>",
+          view_worktrees = "1", view_agents = "2", view_projects = "3",
           close = "q", actions = ".", help = "?",
           new = "n", remove = "D", fork = "f", dispatch = "N",
           start_agent = "a", continue_agent = "c", copy_path = "y",
@@ -519,6 +522,9 @@ keys.yard ~
     Name            Default   Worktrees view / agents view ~
     activate        <CR>      switch / go to (switch and link)
     alt_activate    <S-CR>    peek / link only
+    view_worktrees  1         the worktrees view
+    view_agents     2         the agents view
+    view_projects   3         the projects view
     toggle_view     <Tab>     switch between the views
     filter          /         filter the list
     refresh         <C-r>     refresh

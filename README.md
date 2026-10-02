@@ -121,8 +121,9 @@ name ever changes.
 ### The yard
 
 Open it with `open_yard()` or `:Switchyard`. It opens on the current
-worktree (or the linked agent, or the current project) in normal mode.
-`Tab` cycles the views:
+worktree (or the linked agent, or the current project) in normal mode. The
+title shows the views as tabs: `1` worktrees, `2` agents, `3` projects (`Tab`
+cycles them):
 
 | View | Shows |
 | --- | --- |
@@ -136,9 +137,9 @@ matched letters highlighted.
 
 | Key | Worktrees | Agents | Projects |
 | --- | --- | --- | --- |
-| `Enter`, `1`–`9` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
+| `Enter` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
 | `Shift+Enter` | peek: switch, keep link and viewer | link it, stay where you are | peek |
-| `Tab` | agents view | projects view | worktrees view |
+| `1` / `2` / `3`, `Tab` | worktrees / agents / projects view, next view | same | same |
 | `n` | new worktree | new agent in a worktree | |
 | `N` | dispatch a task | dispatch a task | |
 | `D` | remove worktree (choose: keep or stop its agents) | stop the agent | |
@@ -154,9 +155,9 @@ matched letters highlighted.
 
 Every key can be changed in `keys.yard` (see Configuration).
 
-A typical detour: `Tab Tab` (projects) → `/nvim` → `Enter` on your Neovim
-config (pinned) → `Tab` back to worktrees → `a`: an agent starts there and the
-viewer shows it working.
+A typical detour: `3` (projects) → `/nvim` → `Enter` on your Neovim config
+(pinned) → `1` (worktrees) → `a`: an agent starts there and the viewer shows
+it working.
 
 ### Linking, following and peeking
 
@@ -313,6 +314,7 @@ require("switchyard").setup({
   keys = {
     yard = {
       activate = "<CR>", alt_activate = "<S-CR>", toggle_view = "<Tab>",
+      view_worktrees = "1", view_agents = "2", view_projects = "3",
       filter = "/", refresh = "<C-r>", close = "q", actions = ".", help = "?",
       new = "n", remove = "D", fork = "f", dispatch = "N",
       start_agent = "a", continue_agent = "c", copy_path = "y",
