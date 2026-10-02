@@ -57,7 +57,7 @@ local function leave(win, from)
 	end
 end
 
--- Show a menu in the yard's style.
+-- Show a menu in the yard's style. `/` filters it fuzzily (like the yard).
 -- opts.title: the title line
 -- opts.items: list of { label, action, key? (shown on the right), danger? }
 -- opts.on_cancel: optional, called when closed without choosing
@@ -69,52 +69,114 @@ function M.open(opts)
 	local was_typing = vim.api.nvim_get_mode().mode:sub(1, 1) == "i"
 	vim.cmd.stopinsert()
 	local items = opts.items
+	local hints = " ⏎ choose  ^N/^P move  1-9 pick  / filter  esc cancel"
 
 	local label_width = 0
 	for _, item in ipairs(items) do
 		label_width = math.max(label_width, vim.fn.strdisplaywidth(item.label))
 	end
-	local width = math.min(math.max(label_width + 14, 44), math.floor(vim.o.columns * 0.7))
+	local width = math.min(math.max(label_width + 14, 52), math.floor(vim.o.columns * 0.7))
+	-- Long lists (earlier sessions) scroll
+	local max_height = math.max(3, math.min(15, vim.o.lines - 12))
 
-	-- Lines: " 1  label ............ key"
-	local lines, marks = {}, {}
-	for i, item in ipairs(items) do
-		local number = ((#items > 9 and "%2d" or " %d") .. "  "):format(i) -- aligned past 9
-		local key = item.key and (item.key .. " ") or ""
-		local gap = width - vim.fn.strdisplaywidth(number .. item.label) - vim.fn.strdisplaywidth(key)
-		lines[i] = number .. item.label .. string.rep(" ", math.max(gap, 1)) .. key
-		marks[i] = {
-			{ 0, #number, "SwitchyardDim" },
-			item.danger and { #number, #number + #item.label, "SwitchyardDanger" } or nil,
-			item.key and { #lines[i] - #key, #lines[i], "SwitchyardKey" } or nil,
-		}
-	end
-
-	local buf, win = float(from, width, lines, opts.title, " ⏎ choose  ^N/^P move  1-9 pick  esc cancel")
-	vim.bo[buf].modifiable = false
-	for i, line_marks in ipairs(marks) do
-		for _, m in pairs(line_marks) do
-			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, m[1], { end_col = m[2], hl_group = m[3] })
-		end
-	end
+	local buf, win = float(from, width, vim.fn["repeat"]({ "" }, math.min(#items, max_height)), opts.title, hints)
 	vim.wo[win].cursorline = true
 	vim.wo[win].winhighlight = "CursorLine:SwitchyardSelection"
 	ui.hide_cursor()
 
+	-- The items shown (indexes into `items`), in order: all of them, or the
+	-- ones matching the filter, best first
+	local shown, filter = {}, ""
+
+	local function render()
+		shown = {}
+		local matched = {} -- item index -> set of matched character indexes
+		if filter == "" then
+			for i = 1, #items do
+				shown[i] = i
+			end
+		else
+			local scored = {}
+			for i, item in ipairs(items) do
+				local result = vim.fn.matchfuzzypos({ item.label }, filter)
+				if #result[1] > 0 then
+					table.insert(scored, { i = i, score = result[3][1] })
+					matched[i] = {}
+					for _, pos in ipairs(result[2][1]) do
+						matched[i][pos] = true
+					end
+				end
+			end
+			table.sort(scored, function(a, b)
+				if a.score ~= b.score then
+					return a.score > b.score
+				end
+				return a.i < b.i
+			end)
+			for n, entry in ipairs(scored) do
+				shown[n] = entry.i
+			end
+		end
+
+		-- Lines: " 1  label ............ key"
+		local lines, marks = {}, {}
+		for n, i in ipairs(shown) do
+			local item = items[i]
+			local number = ((#shown > 9 and "%2d" or " %d") .. "  "):format(n) -- aligned past 9
+			local key = item.key and (item.key .. " ") or ""
+			local gap = width - vim.fn.strdisplaywidth(number .. item.label) - vim.fn.strdisplaywidth(key)
+			lines[n] = number .. item.label .. string.rep(" ", math.max(gap, 1)) .. key
+			marks[n] = {
+				{ 0, #number, "SwitchyardDim" },
+				item.danger and { #number, #number + #item.label, "SwitchyardDanger" } or nil,
+				item.key and { #lines[n] - #key, #lines[n], "SwitchyardKey" } or nil,
+			}
+			for pos in pairs(matched[i] or {}) do
+				local s, e = vim.fn.byteidx(item.label, pos), vim.fn.byteidx(item.label, pos + 1)
+				table.insert(marks[n], { #number + s, #number + e, "SwitchyardMatch" })
+			end
+		end
+		if #lines == 0 then
+			lines[1], marks[1] = "    No matches", { { 0, 14, "SwitchyardDim" } }
+		end
+
+		vim.bo[buf].modifiable = true
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		vim.bo[buf].modifiable = false
+		vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+		for n, line_marks in ipairs(marks) do
+			for _, m in pairs(line_marks) do
+				vim.api.nvim_buf_set_extmark(buf, ns, n - 1, m[1], { end_col = m[2], hl_group = m[3] })
+			end
+		end
+		ui.hints(buf, hints)
+		vim.api.nvim_win_set_config(win, { height = math.min(#lines, max_height) + 2 }) -- + title and hints
+		vim.api.nvim_win_set_cursor(win, { 1, 0 })
+	end
+
+	local input_win = nil -- the filter line, only while filtering
 	local done = false
+	local function close_input()
+		if input_win and vim.api.nvim_win_is_valid(input_win) then
+			vim.api.nvim_win_close(input_win, true)
+		end
+		input_win = nil
+	end
 	local function close()
 		if done then
 			return
 		end
 		done = true
+		vim.cmd.stopinsert()
+		close_input()
 		ui.show_cursor()
 		leave(win, from)
 		if was_typing and vim.api.nvim_get_current_win() == from then
 			vim.cmd("startinsert!") -- typing on where you were
 		end
 	end
-	local function choose(index)
-		local item = items[index or vim.api.nvim_win_get_cursor(win)[1]]
+	local function choose(n)
+		local item = items[shown[n or vim.api.nvim_win_get_cursor(win)[1]]]
 		close()
 		if item then
 			vim.schedule(item.action)
@@ -125,6 +187,66 @@ function M.open(opts)
 		if opts.on_cancel then
 			vim.schedule(opts.on_cancel)
 		end
+	end
+	local function move(delta)
+		local row = vim.api.nvim_win_get_cursor(win)[1] + delta
+		vim.api.nvim_win_set_cursor(win, { math.max(1, math.min(math.max(#shown, 1), row)), 0 })
+	end
+
+	-- `/`: a line right above the menu (below when there's no room); typing
+	-- filters, Enter chooses, Esc clears the filter and goes back to the list
+	local function start_filter()
+		if input_win then
+			return vim.api.nvim_set_current_win(input_win)
+		end
+		local input_buf = vim.api.nvim_create_buf(false, true)
+		vim.bo[input_buf].bufhidden = "wipe"
+		vim.bo[input_buf].filetype = "switchyard"
+		local config = vim.api.nvim_win_get_config(win)
+		local row = config.row >= 3 and config.row - 3 or config.row + config.height + 2
+		input_win = vim.api.nvim_open_win(input_buf, true, {
+			relative = "editor",
+			row = row,
+			col = config.col,
+			width = config.width,
+			height = 1,
+			style = "minimal",
+			border = "rounded",
+			zindex = 101,
+		})
+		local function imap(key, fn)
+			vim.keymap.set("i", key, fn, { buffer = input_buf, nowait = true, silent = true })
+		end
+		imap("<CR>", function()
+			choose()
+		end)
+		imap("<Esc>", function()
+			vim.cmd.stopinsert()
+			close_input()
+			filter = ""
+			render()
+			vim.api.nvim_set_current_win(win)
+		end)
+		imap("<C-n>", function()
+			move(1)
+		end)
+		imap("<C-p>", function()
+			move(-1)
+		end)
+		imap("<Down>", function()
+			move(1)
+		end)
+		imap("<Up>", function()
+			move(-1)
+		end)
+		vim.api.nvim_create_autocmd("TextChangedI", {
+			buffer = input_buf,
+			callback = function()
+				filter = vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or ""
+				render()
+			end,
+		})
+		vim.cmd("startinsert!")
 	end
 
 	local function map(key, fn)
@@ -137,9 +259,12 @@ function M.open(opts)
 	map("<C-p>", "k")
 	map("q", cancel)
 	map("<Esc>", cancel)
-	for i = 1, math.min(#items, 9) do
+	map("/", start_filter)
+	for i = 1, 9 do
 		map(tostring(i), function()
-			choose(i)
+			if shown[i] then
+				choose(i)
+			end
 		end)
 	end
 
@@ -156,6 +281,7 @@ function M.open(opts)
 	vim.api.nvim_create_autocmd("BufEnter", { buffer = buf, callback = ui.hide_cursor })
 	vim.api.nvim_create_autocmd("BufLeave", { buffer = buf, callback = ui.show_cursor })
 	vim.api.nvim_create_autocmd("BufWipeout", { buffer = buf, callback = ui.show_cursor })
+	render()
 end
 
 -- Ask for one line of text in the yard's style (instead of vim.ui.input at the

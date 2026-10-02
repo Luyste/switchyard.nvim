@@ -217,6 +217,11 @@ matches come first; the matched letters are highlighted. In the input:
 
 The yard closes when you move to a normal (non-floating) window.
 
+The yard's menus (which agent, which worktree, continue a session, ...)
+filter the same way: `/` opens a filter line, <CR> chooses the selected
+match, <Esc> clears the filter. The continue list holds the 50 latest
+sessions, so you can search one by its title.
+
 ==============================================================================
 6. LINKING, FOLLOWING AND PEEKING                         *switchyard-linking*
 

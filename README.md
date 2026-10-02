@@ -155,6 +155,11 @@ matched letters highlighted.
 
 Every key can be changed in `keys.yard` (see Configuration).
 
+The small menus the yard opens (which agent, which worktree, continue a
+session, …) filter the same way: `/` and type, `Enter` takes the selected
+match, `Esc` clears the filter. The continue list holds the 50 latest
+sessions, so you can search for one by its title.
+
 A typical detour: `3` (projects) → `/nvim` → `Enter` on your Neovim config
 (pinned) → `1` (worktrees) → `a`: an agent starts there and the viewer shows
 it working.

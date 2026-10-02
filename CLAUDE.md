@@ -209,8 +209,10 @@ lua/switchyard/
   ui.lua                     shared highlights (linked to standard groups, default=true)
                              + hide/show cursor (guicursor → blended hl), one shared save;
                              badge text color picked by WCAG contrast (Normal fg vs bg)
-  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9);
-                             used for every choice; menu.input for text
+  menu.lua                   yard-style small menu (numbered items, key/danger, 1-9),
+                             `/` fuzzy filter (a line above it, matchfuzzypos, best
+                             first, scrolls past 15 rows); used for every choice
+                             (continue lists the 50 latest sessions); menu.input for text
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers
   yard.lua                   the yard: three views (worktrees, agents, projects), Tab
