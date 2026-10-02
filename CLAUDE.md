@@ -10,7 +10,7 @@ anything, then **inspect the actual code**: some items below are marked
 - I'm learning Neovim plugin development while building this. Explain **what**
   you change and **why** (the Neovim/Lua concept behind it), briefly.
 - Small steps, each testable. Tell me how to test each step in Neovide.
-- Plain Lua, Neovim 0.12+, no plugin dependencies (fzf-lua is optional).
+- Plain Lua, Neovim 0.12+. One plugin dependency: fzf-lua (the yard).
 - When something breaks, find the root cause before patching.
 
 ## My setup
@@ -95,9 +95,9 @@ anything, then **inspect the actual code**: some items below are marked
   bracketed paste + Enter into the pane. Following: the pane's
   `pane_current_path` (the agent's real working directory). No agent
   extensions (pi-nvim is gone), no sockets, no registries.
-- **Dependencies:** hard dependencies are PROGRAMS only (git, tmux, the
-  agents; reported by the health check). switchyard never requires another
-  Neovim plugin. Every plugin integration is optional (`pcall(require, …)`),
+- **Dependencies:** programs (git, tmux, fzf, the agents) and ONE plugin,
+  fzf-lua (decided Oct 2026: switchyard is my personal tool; the yard is an
+  fzf-lua picker). Reported by the health check. Other plugins stay optional. Every plugin integration is optional (`pcall(require, …)`),
   lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
   simply not offered, and is reported by the health check. Pluggable features
   follow the `terminal` pattern: `"auto" | <name> | function(...)`.
@@ -193,14 +193,25 @@ lua/switchyard/
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers;
                              follow edits (recursive watcher, see Status)
-  yard.lua                   the yard (part 1 done, see below); close() returns to
-                             the window it was opened from
+  picker.lua                 the yard as fzf-lua pickers (replaced yard.lua, Oct 2026):
+                             view "worktrees"/"agents" (Tab reopens the other), one
+                             `actions` list per view {key (name in keys.yard), label,
+                             run(row), any_row?, stay?}; stay = fzf-lua `reload` action
+                             (picker stays open), else the picker closes and run() is
+                             scheduled (menus/questions reopen the picker via
+                             reopen()). Lines = colored text + "\t" + row key, shown
+                             with --with-nth=1; lines(view, cb) also gives the start
+                             index (keymap.fzf load = pos(n)). Preview: tmux
+                             capture-pane (agents), git status + log (worktrees).
+                             Keys are fzf names; actions use alt- (plain letters
+                             search). No live update while open (Ctrl-R).
   view.lua                   the viewer (split + statusline with agent tabs, cycle,
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload + follow edits; arrival: arrival rules + peek;
                              history: earlier sessions from a fake home;
-                             launch: linking after a start; yard: open/close;
+                             launch: linking after a start; picker: lines + keys
+                             (skipped without fzf-lua);
                              view: showing/hiding, also as the last window)
 ```
 
@@ -217,7 +228,11 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - **Continue earlier sessions** (`c` in the worktrees view): a menu of the
   worktree's earlier sessions (all installed agents, newest first, running ones
   left out), so agents can be stopped (`D`) to free memory and resumed later.
-- **Compact yard** (replaced part 1): one float sized to its content (width
+- **The yard is an fzf-lua picker** (Oct 2026, replaced the own float yard.lua):
+  see picker.lua in the module map. Keys in `keys.yard` (fzf names). Lost vs the
+  old yard: 1-9 quick picks, live redraw while open, Shift+Enter (now alt-enter).
+  Gained: fuzzy search, previews (agent screen, git status).
+- (Old) **Compact yard** (replaced part 1): one float sized to its content (width
   50..90, height ≤ 60% of lines), centered, opens in normal mode. Two views,
   Tab toggles, remembered while Neovim runs (`yard.view` = first view):
   - worktrees (current repo): number, `@`, branch, `*` (uncommitted), agents on the

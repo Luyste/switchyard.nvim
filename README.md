@@ -29,9 +29,10 @@ together:
 
 ## Features
 
-- **The yard**: a small floating window with two views, *worktrees* and
-  *agents*. Switch, peek, create and remove worktrees, start, fork, rename and
-  stop agents, all with single keys and a `.` action menu.
+- **The yard**: an [fzf-lua](https://github.com/ibhagwan/fzf-lua) picker with
+  two views, *worktrees* and *agents*: fuzzy search, a preview (git status, or
+  the agent's screen), and keys to switch, peek, create and remove worktrees,
+  start, fork, rename and stop agents.
 - **Linking and following**: arriving in a worktree links its agent
   automatically; if the linked agent moves, the editor follows.
 - **Peek**: visit another worktree to copy something, while prompts keep going
@@ -61,8 +62,10 @@ together:
   CLI agent can be added in `agents` (see [Agents](#agents)). No agent
   extensions are needed.
 
-No Neovim plugins are needed. Run `:checkhealth switchyard` to see what's
-found.
+- **[fzf-lua](https://github.com/ibhagwan/fzf-lua)** (and `fzf`): the yard is
+  an fzf-lua picker
+
+Run `:checkhealth switchyard` to see what's found.
 
 ## Installation
 
@@ -120,28 +123,33 @@ name ever changes.
 
 ### The yard
 
-Open it with `open_yard()` or `:Switchyard`. It opens on the current
-worktree (or the linked agent in the agents view) in normal mode.
+Open it with `open_yard()` or `:Switchyard`: an fzf-lua picker, starting on
+the current worktree (or the linked agent in the agents view). Type to search.
+The preview shows `git status` and recent commits for a worktree, and the
+agent's screen for an agent.
+
+Plain letters type into the search, so actions use `Alt` (on macOS: Option,
+set as Meta in your terminal or Neovide, e.g.
+`vim.g.neovide_input_macos_option_key_is_meta = "only_left"`).
 
 | Key | Worktrees view | Agents view |
 | --- | --- | --- |
-| `Enter`, `1`–`9` | switch the editor there | go to: switch to its worktree and link it |
-| `Shift+Enter` | peek: switch, keep the current link | link it, stay where you are |
+| `Enter` | switch the editor there | go to: switch to its worktree and link it |
+| `Alt-Enter` | peek: switch, keep the current link | link it, stay where you are (picker stays open) |
 | `Tab` | agents view | worktrees view |
-| `n` | new worktree | new agent in a worktree |
-| `N` | dispatch a task | dispatch a task |
-| `D` | remove worktree (choose: keep or stop its agents) | stop the agent |
-| `f` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree |
-| `a` / `c` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | |
-| `y` | copy the path | |
-| `v` / `g` | | show it in the split / in an external terminal |
-| `s` | | write a prompt for this agent |
-| `r` | | rename its tmux session |
-| `/` | filter | filter |
-| `.` / `?` | actions for this row / all keys | same |
-| `Ctrl-R`, `q` | refresh, close | same |
+| `Alt-N` | new worktree | new agent in a worktree |
+| `Alt-D` | dispatch a task | dispatch a task |
+| `Ctrl-X` | remove worktree (choose: keep or stop its agents) | stop the agent |
+| `Alt-F` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree |
+| `Alt-A` / `Alt-C` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | |
+| `Alt-Y` | copy the path | |
+| `Alt-V` / `Alt-G` | | show it in the split / in an external terminal |
+| `Alt-S` | | write a prompt for this agent |
+| `Alt-R` | | rename its tmux session |
+| `Ctrl-R` | refresh | refresh |
+| `F1` | all keys | all keys |
 
-Every key can be changed in `keys.yard` (see Configuration).
+Every key can be changed in `keys.yard` (fzf key names, see Configuration).
 
 The yard shows **one project**: the worktrees and agents of the repo you're
 in. For another repo, open Neovim there.
@@ -299,11 +307,12 @@ require("switchyard").setup({
   },
   keys = {
     yard = {
-      activate = "<CR>", alt_activate = "<S-CR>", toggle_view = "<Tab>",
-      filter = "/", refresh = "<C-r>", close = "q", actions = ".", help = "?",
-      new = "n", remove = "D", fork = "f", dispatch = "N",
-      start_agent = "a", continue_agent = "c", copy_path = "y",
-      view = "v", external = "g", rename = "r", send = "s",
+      -- fzf key names; plain letters type into the search
+      activate = "enter", alt_activate = "alt-enter", toggle_view = "tab",
+      refresh = "ctrl-r", new = "alt-n", remove = "ctrl-x", fork = "alt-f",
+      dispatch = "alt-d", start_agent = "alt-a", continue_agent = "alt-c",
+      copy_path = "alt-y", view = "alt-v", external = "alt-g",
+      rename = "alt-r", send = "alt-s",
     },
   },
 })

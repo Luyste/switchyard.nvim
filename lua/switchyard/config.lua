@@ -15,30 +15,27 @@ M.defaults = {
 		width = 0.45, -- share of the editor's width for the viewer split
 	},
 	keys = {
-		-- Inside the yard (buffer-local). More arrive with the yard's actions.
+		-- Inside the yard (an fzf-lua picker): fzf key names. Plain letters
+		-- type into the search, so actions use alt- (macOS: left Option as Meta).
 		yard = {
-			activate = "<CR>", -- worktrees: switch · agents: go to (switch + link)
-			alt_activate = "<S-CR>", -- worktrees: peek (keep link) · agents: link only
-			toggle_view = "<Tab>",
-			filter = "/",
-			refresh = "<C-r>",
-			close = "q",
-			actions = ".", -- menu with the selected row's actions
-			help = "?", -- every key of the current view
+			activate = "enter", -- worktrees: switch · agents: go to (switch + link)
+			alt_activate = "alt-enter", -- worktrees: peek (keep link) · agents: link only
+			toggle_view = "tab",
+			refresh = "ctrl-r",
 			-- Same key, same idea in both views
-			new = "n", -- worktrees: new worktree · agents: new agent in a worktree
-			remove = "D", -- worktrees: remove worktree · agents: stop agent
-			fork = "f", -- worktrees: fork the linked agent here · agents: fork this one elsewhere
-			dispatch = "N", -- a task for a new agent in a new worktree
+			new = "alt-n", -- worktrees: new worktree · agents: new agent in a worktree
+			remove = "ctrl-x", -- worktrees: remove worktree · agents: stop agent
+			fork = "alt-f", -- worktrees: fork the linked agent here · agents: fork this one elsewhere
+			dispatch = "alt-d", -- a task for a new agent in a new worktree
 			-- worktrees view
-			start_agent = "a",
-			continue_agent = "c",
-			copy_path = "y",
+			start_agent = "alt-a",
+			continue_agent = "alt-c",
+			copy_path = "alt-y",
 			-- agents view
-			view = "v", -- in the split
-			external = "g", -- in an external terminal
-			rename = "r", -- its tmux session
-			send = "s", -- the prompt builder aimed at this agent
+			view = "alt-v", -- in the split
+			external = "alt-g", -- in an external terminal
+			rename = "alt-r", -- its tmux session
+			send = "alt-s", -- the prompt builder aimed at this agent
 		},
 	},
 }

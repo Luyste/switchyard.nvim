@@ -15,6 +15,14 @@ function M.check()
 	vim.health.start("switchyard: programs")
 	check_program("git", { "--version" }, "brew install git")
 	check_program("tmux", { "-V" }, "brew install tmux")
+	check_program("fzf", { "--version" }, "brew install fzf")
+
+	vim.health.start("switchyard: plugins")
+	if pcall(require, "fzf-lua") then
+		vim.health.ok("fzf-lua: found (the yard)")
+	else
+		vim.health.error("fzf-lua not found: the yard needs it", "Install ibhagwan/fzf-lua")
+	end
 
 	vim.health.start("switchyard: options")
 	local opts = require("switchyard.config").options

@@ -64,8 +64,10 @@ The link ~
   box, any other one can be added (|switchyard-config-agents|). No agent
   extensions are needed.
 
-No Neovim plugins are needed. Run `:checkhealth switchyard` to see what
-is found (|switchyard-health|).
+- fzf-lua (https://github.com/ibhagwan/fzf-lua) and fzf: the yard is an
+  fzf-lua picker.
+
+Run `:checkhealth switchyard` to see what is found (|switchyard-health|).
 
 ==============================================================================
 3. SETUP                                                    *switchyard-setup*
@@ -129,9 +131,11 @@ name ever changes.
 ==============================================================================
 5. THE YARD                                                  *switchyard-yard*
 
-Open it with |switchyard.open_yard()| or |:Switchyard|. It opens in normal
-mode on the current worktree (or on the linked agent in the agents view).
-The first view is set by |switchyard-config-yard.view|.
+Open it with |switchyard.open_yard()| or |:Switchyard|: an fzf-lua picker,
+starting on the current worktree (or on the linked agent in the agents view).
+Type to search. The preview shows `git status` and recent commits for a
+worktree, and the agent's screen for an agent. The first view is set by
+|switchyard-config-yard.view|.
 
 The yard shows one project: the worktrees and agents of the repository you
 are in. For another repository, open Neovim there.
@@ -148,61 +152,42 @@ Agents view      Every agent of the repository, with its worktree. `●`
 
 Keys ~
                                                         *switchyard-yard-keys*
-The names in brackets are the entries of |switchyard-config-keys|.
+The names in brackets are the entries of |switchyard-config-keys|. Plain
+letters type into the search, so actions use Alt (macOS: Option as Meta).
 
 Key         Worktrees view                Agents view ~
 <CR>        switch the editor there       go to: switch to its worktree
  (activate)                               and link it
-1-9         same as <CR> for that row     same as <CR> for that row
-<S-CR>      peek: switch, keep the        link it, stay where you are
- (alt_activate) current link
+<M-CR>      peek: switch, keep the        link it, stay where you are
+ (alt_activate) current link              (the picker stays open)
 <Tab>       agents view                   worktrees view
  (toggle_view)
-n (new)     new worktree                  new agent in a worktree
-N           dispatch a task               dispatch a task
+<M-n> (new) new worktree                  new agent in a worktree
+<M-d>       dispatch a task               dispatch a task
  (dispatch)
-D (remove)  remove the worktree (choose   stop the agent
-            to keep or stop its agents)
-f (fork)    fork the linked agent into    fork this agent into another
+<C-x>       remove the worktree (choose   stop the agent
+ (remove)   to keep or stop its agents)
+<M-f> (fork) fork the linked agent into   fork this agent into another
             this worktree                 (or a new) worktree
-a           start a new agent here
+<M-a>       start a new agent here
  (start_agent)
-c           continue an earlier session
+<M-c>       continue an earlier session
  (continue_agent) here (a list, newest first;
             running ones left out)
-y           copy the path
+<M-y>       copy the path
  (copy_path)
-v (view)                                  show it in the viewer split
-g                                         open it in an external terminal
+<M-v> (view)                              show it in the viewer split
+<M-g>                                     open it in an external terminal
  (external)
-s (send)                                  write a prompt for this agent
-r (rename)                                rename its tmux session
-/ (filter)  filter the list               filter the list
-. (actions) menu with this row's actions  same
-? (help)    every key of this view        same
+<M-s> (send)                              write a prompt for this agent
+<M-r> (rename)                            rename its tmux session
 <C-r>       refresh                       same
  (refresh)
-q (close),  close the yard                same
-<Esc>
+<F1>        every key                     same
 
-<C-n>/<C-p> and j/k move the selection.
-
-Actions that remove or stop something ask for confirmation. With several
-agents installed, starting an agent asks which one.
-
-Filtering ~
-                                                      *switchyard-yard-filter*
-`/` opens an input line above the list. Typing filters the list
-(case-insensitive substring). In the input:
-
-    <CR>          activate the selected row
-    <S-CR>        alternate action (peek / link only)
-    <C-n>, <Down> next row
-    <C-p>, <Up>   previous row
-    <Tab>         switch view
-    <Esc>, <C-c>  stop filtering, back to the list
-
-The yard closes when you move to a normal (non-floating) window.
+Actions that remove or stop something ask for confirmation (the picker
+closes for the question and comes back after). With several agents
+installed, starting an agent asks which one.
 
 ==============================================================================
 6. LINKING, FOLLOWING AND PEEKING                         *switchyard-linking*
@@ -435,12 +420,12 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       },
       keys = {
         yard = {
-          activate = "<CR>", alt_activate = "<S-CR>",
-          toggle_view = "<Tab>", filter = "/", refresh = "<C-r>",
-          close = "q", actions = ".", help = "?",
-          new = "n", remove = "D", fork = "f", dispatch = "N",
-          start_agent = "a", continue_agent = "c", copy_path = "y",
-          view = "v", external = "g", rename = "r", send = "s",
+          activate = "enter", alt_activate = "alt-enter",
+          toggle_view = "tab", refresh = "ctrl-r", new = "alt-n",
+          remove = "ctrl-x", fork = "alt-f", dispatch = "alt-d",
+          start_agent = "alt-a", continue_agent = "alt-c",
+          copy_path = "alt-y", view = "alt-v", external = "alt-g",
+          rename = "alt-r", send = "alt-s",
         },
       },
     })
@@ -519,29 +504,25 @@ viewer.width ~
 
                                                       *switchyard-config-keys*
 keys.yard ~
-    Buffer-local keys inside the yard. See |switchyard-yard-keys| for what
-    each one does in each view.
+    Keys inside the yard, as fzf key names. See |switchyard-yard-keys| for
+    what each one does in each view.
 
-    Name            Default   Worktrees view / agents view ~
-    activate        <CR>      switch / go to (switch and link)
-    alt_activate    <S-CR>    peek / link only
-    toggle_view     <Tab>     switch between the views
-    filter          /         filter the list
-    refresh         <C-r>     refresh
-    close           q         close the yard
-    actions         .         menu with the row's actions
-    help            ?         every key of the view
-    new             n         new worktree / new agent in a worktree
-    remove          D         remove worktree / stop agent
-    fork            f         fork the linked agent here / fork this one
-    dispatch        N         dispatch a task
-    start_agent     a         start an agent here (worktrees)
-    continue_agent  c         continue an earlier session here (worktrees)
-    copy_path       y         copy the path (worktrees)
-    view            v         show in the viewer (agents)
-    external        g         open in an external terminal (agents)
-    rename          r         rename the tmux session (agents)
-    send            s         write a prompt for it (agents)
+    Name            Default     Worktrees view / agents view ~
+    activate        enter       switch / go to (switch and link)
+    alt_activate    alt-enter   peek / link only
+    toggle_view     tab         switch between the views
+    refresh         ctrl-r      refresh
+    new             alt-n       new worktree / new agent in a worktree
+    remove          ctrl-x      remove worktree / stop agent
+    fork            alt-f       fork the linked agent here / fork this one
+    dispatch        alt-d       dispatch a task
+    start_agent     alt-a       start an agent here (worktrees)
+    continue_agent  alt-c       continue an earlier session here (worktrees)
+    copy_path       alt-y       copy the path (worktrees)
+    view            alt-v       show in the viewer (agents)
+    external        alt-g       open in an external terminal (agents)
+    rename          alt-r       rename the tmux session (agents)
+    send            alt-s       write a prompt for it (agents)
 
 ==============================================================================
 14. COMMANDS                                             *switchyard-commands*
