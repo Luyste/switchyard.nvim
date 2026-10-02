@@ -75,13 +75,6 @@ function M.new(agent, cwd)
 	M.start(agent, agent.cmd, "new " .. agent.name, cwd)
 end
 
-function M.continue(agent, cwd)
-	if not agent.continue then
-		return vim.notify("switchyard: " .. agent.name .. " can't continue a session", vim.log.levels.WARN)
-	end
-	M.start(agent, agent.continue, agent.name .. " (continue)", cwd)
-end
-
 -- Fork a running session into `cwd`. The copy starts with a note about where
 -- it runs now (the history is full of paths from the original worktree).
 function M.fork(source, cwd)

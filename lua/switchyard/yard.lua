@@ -552,11 +552,9 @@ local actions = {
 		},
 		{
 			key = "continue_agent",
-			label = "continue the last session here",
+			label = "continue an earlier session here",
 			run = function(row)
-				require("switchyard.actions").with_agent(function(agent)
-					require("switchyard.launch").continue(agent, row.path)
-				end)
+				require("switchyard.actions").continue_agent(row.path)
 			end,
 		},
 		{

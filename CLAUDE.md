@@ -150,11 +150,17 @@ lua/switchyard/
   tmux.lua                   list, free_name, new(name, cwd, cmd, cb(pane_id)),
                              paste(pane, text, cb) (bracketed), submit(pane, text, cb)
                              (paste + 50 ms + Enter), rename, kill, attach_cmd
-  agents.lua                 agent tables {name, cmd, continue?, task?, fork?, match?};
+  agents.lua                 agent tables {name, cmd, continue?, history?, task?, fork?, match?};
                              presets pi / claude / codex (pi fork = --fork <newest
                              ~/.pi/agent/sessions file>, claude fork = --resume <id from
                              ~/.claude/sessions/<pid>.json> --fork-session; the fork note
-                             is the copy's first message); configured(), installed(),
+                             is the copy's first message); history(cwd, running) = earlier
+                             sessions {time, title, cmd} newest first, running ones left
+                             out (pi: ~/.pi/agent/sessions files, title = first prompt,
+                             `pi --session <file>`; claude: ~/.claude/projects/<path with
+                             non-alphanumerics as ->/<id>.jsonl, title = last custom/AI
+                             title or last prompt read from the file's tail, `claude
+                             --resume <id>`); configured(), installed(),
                              task_cmd(agent, task)
   snapshot.lua               parse(panes, ps, agents) → sessions {agent, pid, pane, tmux,
                              cwd, started}; take(agents, cb) runs tmux + ps side by side
@@ -169,10 +175,13 @@ lua/switchyard/
                              snapshot; 2 s timer
   actions.lua                confirm(title, yes_label, fn) (menu, "No" first),
                              with_agent(cb) (asks when several are installed),
+                             continue_agent(cwd) (menu of earlier sessions of every
+                             installed agent, 9 newest, age on the right; agents without
+                             history offer their `continue` command),
                              create_worktree(cwd, on_done(path)), remove_worktree(cwd,
                              wt, on_done, agents) (refuses current/main),
                              stop_agent(session, on_done) (tmux kill-session)
-  launch.lua                 start(agent, cmd, label, cwd?, cb)/new/continue/fork —
+  launch.lua                 start(agent, cmd, label, cwd?, cb)/new/fork —
                              tmux.new gives the pane; wait until an agent runs in THAT
                              pane (refresh every 500 ms, 30 s), then link only if it runs
                              where the editor is (checked then), else "started <name>"
@@ -190,6 +199,7 @@ lua/switchyard/
                              external terminal)
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload + follow edits; arrival: arrival rules + peek;
+                             history: earlier sessions from a fake home;
                              launch: linking after a start; yard: open/close;
                              view: showing/hiding, also as the last window)
 ```
@@ -204,11 +214,15 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   found, started, forked, sent to and followed without agent extensions.
 - Linking, arrival rules, following (move-only), tmux names in statusline.
 - Launching agents in tmux (new/continue/fork) from `start_agent`.
+- **Continue earlier sessions** (`c` in the worktrees view): a menu of the
+  worktree's earlier sessions (all installed agents, newest first, running ones
+  left out), so agents can be stopped (`D`) to free memory and resumed later.
 - **Compact yard** (replaced part 1): one float sized to its content (width
   50..90, height ≤ 60% of lines), centered, opens in normal mode. Two views,
   Tab toggles, remembered while Neovim runs (`yard.view` = first view):
   - worktrees (current repo): number, `@`, branch, `*` (uncommitted), agents on the
-    right (`● linked +n` / `● n`);
+    right (`● <linked agent's tmux name> +n` in green / `● n`). Title is
+    `switchyard · <view>` in both views (no repo name);
   - agents (this repo only: one project per yard): number, `●` + tmux name,
     branch on the right; linked first, then by worktree. Agents whose folder is
     gone (kept after "remove worktree") show as "removed worktree".

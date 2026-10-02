@@ -167,8 +167,9 @@ f (fork)    fork the linked agent into    fork this agent into another
             this worktree                 (or a new) worktree
 a           start a new agent here
  (start_agent)
-c           continue the last session
- (continue_agent) here
+c           continue an earlier session
+ (continue_agent) here (a list, newest first;
+            running ones left out)
 y           copy the path
  (copy_path)
 v (view)                                  show it in the viewer split
@@ -460,6 +461,9 @@ agents ~
       name = "aider",          -- in the yard and tmux session names
       cmd = { "aider" },       -- start a new session
       continue = { "aider", "--restore-chat-history" }, -- optional
+      history = nil,           -- optional: function(cwd, running)
+                               -- returning earlier sessions, newest
+                               -- first: { { time, title, cmd } }
       task = true,             -- optional: a task goes after `cmd`, or
                                -- a function(task) returning the command
       fork = nil,              -- optional: function(session, note)
@@ -532,7 +536,7 @@ keys.yard ~
     fork            f         fork the linked agent here / fork this one
     dispatch        N         dispatch a task
     start_agent     a         start an agent here (worktrees)
-    continue_agent  c         continue the last session here (worktrees)
+    continue_agent  c         continue an earlier session here (worktrees)
     copy_path       y         copy the path (worktrees)
     view            v         show in the viewer (agents)
     external        g         open in an external terminal (agents)

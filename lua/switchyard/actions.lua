@@ -36,6 +36,60 @@ function M.with_agent(callback)
 	})
 end
 
+-- "5m", "3h", "2d": how long ago `time` (seconds) was
+local function ago(time)
+	local s = os.time() - time
+	return s < 3600 and (math.max(1, math.floor(s / 60)) .. "m")
+		or s < 86400 and (math.floor(s / 3600) .. "h")
+		or (math.floor(s / 86400) .. "d")
+end
+
+-- Choose one of `cwd`'s earlier sessions (every installed agent, newest
+-- first, the 9 latest) and continue it in a new tmux session. Sessions
+-- still running are left out. Agents without a history offer "continue
+-- the last session" instead.
+function M.continue_agent(cwd)
+	local agents = require("switchyard.agents")
+	local here = require("switchyard.sessions").in_folder(cwd)
+	local found = {}
+	for _, agent in ipairs(agents.installed()) do
+		if agent.history then
+			local running = vim.tbl_filter(function(s)
+				return s.agent.name == agent.name
+			end, here)
+			for _, entry in ipairs(agent.history(cwd, running)) do
+				entry.agent = agent
+				table.insert(found, entry)
+			end
+		elseif agent.continue then
+			table.insert(found, { agent = agent, cmd = agent.continue, title = "continue the last session" })
+		end
+	end
+	table.sort(found, function(a, b)
+		return (a.time or 0) > (b.time or 0)
+	end)
+	if #found == 0 then
+		return vim.notify("switchyard: no earlier sessions here", vim.log.levels.WARN)
+	end
+
+	local items = {}
+	for i = 1, math.min(#found, 9) do
+		local entry = found[i]
+		local title = (entry.title or "(no title)"):gsub("%s+", " ")
+		if vim.fn.strchars(title) > 50 then
+			title = vim.fn.strcharpart(title, 0, 49) .. "…"
+		end
+		items[i] = {
+			label = entry.agent.name .. "  " .. title,
+			key = entry.time and ago(entry.time) or nil,
+			action = function()
+				require("switchyard.launch").start(entry.agent, entry.cmd, entry.agent.name .. " (continue)", cwd)
+			end,
+		}
+	end
+	require("switchyard.menu").open({ title = "continue a session", items = items })
+end
+
 -- Ask for a branch name and create a worktree for it (the editor stays put).
 -- on_done(path, branch)
 function M.create_worktree(cwd, on_done)

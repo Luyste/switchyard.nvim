@@ -132,7 +132,7 @@ worktree (or the linked agent in the agents view) in normal mode.
 | `N` | dispatch a task | dispatch a task |
 | `D` | remove worktree (choose: keep or stop its agents) | stop the agent |
 | `f` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree |
-| `a` / `c` | start a new agent / continue the last session here | |
+| `a` / `c` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | |
 | `y` | copy the path | |
 | `v` / `g` | | show it in the split / in an external terminal |
 | `s` | | write a prompt for this agent |
@@ -257,6 +257,9 @@ agents = {
     name = "aider",              -- in the yard and in tmux session names
     cmd = { "aider" },           -- start a new session
     continue = { "aider", "--restore-chat-history" }, -- optional: `c` in the yard
+    history = nil,               -- optional: function(cwd, running) returning the
+                                 --   folder's earlier sessions, newest first:
+                                 --   { { time, title, cmd } } (pi and claude have one)
     task = true,                 -- optional: a dispatched task goes after `cmd`
                                  --   (or a function(task) returning the command)
     fork = nil,                  -- optional: function(session, note) returning a
