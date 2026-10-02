@@ -128,7 +128,7 @@ cycles them):
 | View | Shows |
 | --- | --- |
 | worktrees | the worktrees of this repo: `@` current, `*` uncommitted, `● <linked agent> +n` / `● n` agents (outside a repo: the folder itself) |
-| agents | the agents of this repo, the linked one first, with their worktree |
+| agents | the agents of this repo, the linked one first, with their worktree. `Tab` switches to **all** agents running in tmux (other projects show their project name) and back |
 | projects | the current project, pinned folders, projects with agents (`● n`), recent ones, then every git repo `fd` finds under `projects.roots` (cached, so the list is there at once) |
 
 `/` filters **fuzzily**: the letters you type in order, not necessarily next
@@ -139,7 +139,8 @@ matched letters highlighted.
 | --- | --- | --- | --- |
 | `Enter` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
 | `Shift+Enter` | peek: switch, keep link and viewer | link it, stay where you are | peek |
-| `1` / `2` / `3`, `Tab` | worktrees / agents / projects view, next view | same | same |
+| `1` / `2` / `3` | worktrees / agents / projects view | same | same |
+| `Tab` | next view | this repo's agents ⇄ all agents | next view |
 | `n` | new worktree | new agent in a worktree | |
 | `N` | dispatch a task | dispatch a task | |
 | `D` | remove worktree (choose: keep or stop its agents) | stop the agent | |

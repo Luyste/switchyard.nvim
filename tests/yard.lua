@@ -37,10 +37,18 @@ git(root .. "/repo", "worktree", "add", "-q", "-b", "feature/login-form", root .
 git(root .. "/repo", "worktree", "add", "-q", "-b", "fix-tests", root .. "/repo.fix")
 vim.cmd.cd(root .. "/repo")
 
--- No agents, no fd, no history here
-require("switchyard.sessions").all = function()
-	return {}
+-- Two agents: one in a worktree of this repo, one in another project. No fd,
+-- no history here.
+local agent = { name = "pi", cmd = { "pi" } }
+local agents = {
+	{ pid = 1, cwd = root .. "/repo.login", agent = agent, tmux = "pi-login", pane = "%1", started = 0 },
+	{ pid = 2, cwd = root .. "/other", agent = agent, tmux = "pi-other", pane = "%2", started = 0 },
+}
+local sessions = require("switchyard.sessions")
+sessions.all = function()
+	return agents
 end
+sessions.refresh = function() end
 local projects = require("switchyard.projects")
 projects.find = function(on_found, on_done)
 	on_found(root .. "/other")
@@ -92,9 +100,16 @@ end
 
 yard.open()
 shows("feature/login%-form")
-press("2") -- agents, then back with Tab Tab (agents → projects → worktrees)
-shows("No agents running")
-press("<Tab><Tab>")
+press("2") -- agents: this repo's only
+shows("pi%-login")
+assert(not shown():find("pi%-other"), shown())
+press("<Tab>") -- all agents in tmux: the other project's too, with its name
+shows("pi%-other.*other")
+assert(vim.wo[yard_win()].winbar:find("agents %(all%)"), "the title says all")
+press("<Tab>") -- back to this repo's
+shows("pi%-login")
+assert(not shown():find("pi%-other"), shown())
+press("1")
 shows("feature/login%-form")
 -- Fuzzy: "flf" matches feature/login-form (letters in order), not fix-tests
 filter("flf")

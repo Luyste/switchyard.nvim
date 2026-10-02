@@ -142,7 +142,9 @@ Worktrees view   Every worktree of the repository. `@` marks the current
                  in a worktree. Outside a repository: the folder itself.
                                                       *switchyard-yard-agents*
 Agents view      Every agent of the repository, with its worktree. `●`
-                 marks the linked agent.
+                 marks the linked agent. <Tab> switches to all agents
+                 running in tmux (another project's show its name) and
+                 back; the title then says "agents (all)".
                                                     *switchyard-yard-projects*
 Projects view    The current project, pinned folders, projects with agents
                  (`● n`), recent ones, then every git repository `fd` finds
@@ -160,7 +162,8 @@ Key         Worktrees view                Agents view ~
  (view_worktrees, view_agents, view_projects)
 <S-CR>      peek: switch, keep the link   link it, stay where you are
  (alt_activate) and the viewer
-<Tab>       agents view                   projects view
+<Tab>       next view                     this repo's agents / all
+                                          agents in tmux
  (toggle_view)
 n (new)     new worktree                  new agent in a worktree
 N           dispatch a task               dispatch a task

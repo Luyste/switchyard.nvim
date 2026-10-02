@@ -11,8 +11,11 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("switchyard_yard")
 
--- The view survives closing: the yard reopens where you left it
+-- The view survives closing: the yard reopens where you left it. So does
+-- the agents view's scope: this repo's agents ("repo") or every agent in tmux
+-- ("all").
 local view = nil
+local agent_scope = "repo"
 
 local state = {
 	win = nil, -- the list
@@ -167,21 +170,39 @@ local function worktree_rows(all)
 	end)
 end
 
--- This repo's agents: the linked one first, then by worktree. Agents whose
--- folder is gone (kept running after "remove worktree") are listed too, so
--- they can still be forked or stopped.
+-- Where an agent works, for the right side of its row: its branch in this
+-- repo; elsewhere its project, and its folder when that's a worktree of it
+local function agent_where(s, branch_of)
+	if branch_of[s.cwd] then
+		return branch_of[s.cwd]
+	elseif vim.fn.isdirectory(s.cwd) == 0 then
+		return "removed worktree"
+	end
+	local root = require("switchyard.projects").root(s.cwd)
+	local project, folder = vim.fn.fnamemodify(root, ":t"), vim.fn.fnamemodify(s.cwd, ":t")
+	return folder == project and project or (project .. " · " .. folder)
+end
+
+-- This repo's agents (agent_scope "repo"), or every agent in tmux ("all"):
+-- the linked one first, then this repo's, then by folder. Agents whose folder
+-- is gone (kept running after "remove worktree") are listed too, so they can
+-- still be forked or stopped.
 local function agent_rows(all)
 	local branch_of = {}
 	for _, wt in ipairs(worktree_list()) do
 		branch_of[wt.path] = wt.branch
 	end
-	local mine = vim.tbl_filter(function(s)
-		return branch_of[s.cwd] ~= nil or vim.fn.isdirectory(s.cwd) == 0
-	end, all)
+	local mine = agent_scope == "all" and vim.list_slice(all)
+		or vim.tbl_filter(function(s)
+			return branch_of[s.cwd] ~= nil or vim.fn.isdirectory(s.cwd) == 0
+		end, all)
 	local linked = sessions().linked_pid()
 	table.sort(mine, function(a, b)
 		if (a.pid == linked) ~= (b.pid == linked) then
 			return a.pid == linked
+		end
+		if (branch_of[a.cwd] ~= nil) ~= (branch_of[b.cwd] ~= nil) then
+			return branch_of[a.cwd] ~= nil
 		end
 		if a.cwd ~= b.cwd then
 			return a.cwd < b.cwd
@@ -190,7 +211,7 @@ local function agent_rows(all)
 	end)
 	local rows = {}
 	for _, s in ipairs(mine) do
-		local where = branch_of[s.cwd] or "removed worktree"
+		local where = agent_where(s, branch_of)
 		table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
 	end
 	return filtered(rows, function(row)
@@ -325,7 +346,8 @@ local function title()
 	for _, name in ipairs(views) do
 		local shown = name == view
 		table.insert(parts, { k["view_" .. name] .. " ", shown and "SwitchyardKey" or "SwitchyardDim" })
-		table.insert(parts, { name .. "  ", shown and "SwitchyardHeading" or "SwitchyardDim" })
+		local label = (name == "agents" and agent_scope == "all") and "agents (all)" or name
+		table.insert(parts, { label .. "  ", shown and "SwitchyardHeading" or "SwitchyardDim" })
 	end
 	return parts
 end
@@ -333,7 +355,8 @@ end
 local function hints(width)
 	local text = ({
 		worktrees = " ⏎ switch  ⇧⏎ peek  a agent  / filter  . actions  ? keys",
-		agents = " ⏎ go to  ⇧⏎ link  v view  / filter  . actions  ? keys",
+		agents = agent_scope == "all" and " ⏎ go to  ⇧⏎ link  ⇥ this repo  / filter  . actions  ? keys"
+			or " ⏎ go to  ⇧⏎ link  ⇥ all agents  / filter  . actions  ? keys",
 		projects = " ⏎ switch  ⇧⏎ peek  a agent  / filter  . actions  ? keys",
 	})[view]
 	return truncate(text, width - 1)
@@ -425,7 +448,7 @@ local function render()
 	if #parts == 0 then
 		local message = (state.worktrees or state.err) and "No matches" or "Loading…"
 		if view == "agents" and state.filter == "" and (state.worktrees or state.err) then
-			message = "No agents running"
+			message = agent_scope == "repo" and "No agents in this repo  (⇥ all agents)" or "No agents running"
 		elseif view == "projects" then
 			message = state.projects_state == "done" and "No matches" or "Looking for projects…"
 		end
@@ -534,7 +557,14 @@ local function show_view(name)
 	render()
 end
 
+-- Tab: in the agents view, this repo's agents or all of them; elsewhere the
+-- next view (also while filtering, where 1/2/3 are text)
 local function toggle_view()
+	if view == "agents" then
+		agent_scope = agent_scope == "all" and "repo" or "all"
+		state.selected.agents = nil
+		return render()
+	end
 	show_view(order[view])
 end
 
@@ -937,7 +967,7 @@ local function open_menu(all_keys)
 			end
 		end
 		for _, nav in ipairs({
-			{ "toggle_view", "next view", toggle_view },
+			{ "toggle_view", view == "agents" and "this repo / all agents" or "next view", toggle_view },
 			{ "filter", "filter", start_filter },
 			{ "refresh", "refresh", refresh },
 			{ "close", "close the yard", M.close },
