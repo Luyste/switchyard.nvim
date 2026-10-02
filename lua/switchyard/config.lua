@@ -1,44 +1,29 @@
 local M = {}
 
 M.defaults = {
-	-- Agents that run in tmux: preset names ("pi", "claude", "codex") or your
-	-- own tables (see lua/switchyard/agents.lua). Only installed ones are used.
-	agents = { "pi", "claude", "codex" },
-	follow = true,
-	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
-	terminal = "auto",
-	live_reload = true, -- open files follow changes made by agents
 	yard = {
-		view = "worktrees", -- the view the yard opens in first: "worktrees" or "agents"
+		view = "worktrees", -- the view the yard opens in first: "worktrees" or "folders"
 	},
-	viewer = {
-		width = 0.45, -- share of the editor's width for the viewer split
+	-- Optional plugins switchyard works with. Each one: true = when installed,
+	-- false = never.
+	integrations = {
+		sidekick = true, -- after a switch, sidekick's agent window shows the new folder's agent
 	},
 	keys = {
-		-- Inside the yard (buffer-local). More arrive with the yard's actions.
+		-- Inside the yard (buffer-local)
 		yard = {
-			activate = "<CR>", -- worktrees: switch · agents: go to (switch + link)
-			alt_activate = "<S-CR>", -- worktrees: peek (keep link) · agents: link only
+			activate = "<CR>", -- switch the editor to the row's folder
+			enter = "l", -- folders: look inside (a repo: its worktrees)
+			up = "h", -- worktrees: the folders around the repo · folders: one level up
 			toggle_view = "<Tab>",
 			filter = "/",
 			refresh = "<C-r>",
 			close = "q",
 			actions = ".", -- menu with the selected row's actions
 			help = "?", -- every key of the current view
-			-- Same key, same idea in both views
-			new = "n", -- worktrees: new worktree · agents: new agent in a worktree
-			remove = "D", -- worktrees: remove worktree · agents: stop agent
-			fork = "f", -- worktrees: fork the linked agent here · agents: fork this one elsewhere
-			dispatch = "N", -- a task for a new agent in a new worktree
-			-- worktrees view
-			start_agent = "a",
-			continue_agent = "c",
+			new = "n", -- worktrees: new worktree
+			remove = "D", -- worktrees: remove worktree
 			copy_path = "y",
-			-- agents view
-			view = "v", -- in the split
-			external = "g", -- in an external terminal
-			rename = "r", -- its tmux session
-			send = "s", -- the prompt builder aimed at this agent
 		},
 	},
 }
@@ -46,13 +31,7 @@ M.defaults = {
 M.options = vim.deepcopy(M.defaults)
 
 function M.setup(opts)
-	opts = opts or {}
-	M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
-
-	-- Lists are replaced, not merged
-	if opts.agents then
-		M.options.agents = opts.agents
-	end
+	M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
 end
 
 return M
