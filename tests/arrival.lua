@@ -1,5 +1,19 @@
 -- Arrival rules, peek, and following a moving agent.
 -- Run: nvim --headless -u NONE --cmd "set rtp+=." -l tests/arrival.lua
+
+-- The viewer, faked: what the arrival rules ask of it
+local viewer = { open = false, shown = 0, hidden = 0 }
+package.loaded["switchyard.view"] = {
+	is_open = function()
+		return viewer.open
+	end,
+	sync = function()
+		viewer.open, viewer.shown = true, viewer.shown + 1
+	end,
+	hide = function()
+		viewer.open, viewer.hidden = false, viewer.hidden + 1
+	end,
+}
 local sessions = require("switchyard.sessions")
 require("switchyard.config").setup({})
 sessions.setup()
@@ -47,10 +61,23 @@ sessions.keep_link_for(b)
 arrive(b)
 assert(linked() == 1, "peek keeps the link")
 
--- The hold is used up: a normal arrival in b links b's agent
+-- The hold is used up: a normal arrival in b links b's agent and shows it
 arrive(a)
+local shown = viewer.shown
 arrive(b)
 assert(linked() == 2, "normal switch moves the link")
+assert(viewer.shown == shown + 1 and viewer.open, "and shows it in the viewer")
+
+-- No agent in c: unlink and close the viewer
+arrive(c)
+assert(linked() == nil, "no agent: unlinked")
+assert(not viewer.open, "no agent: viewer closed")
+
+-- Peek with the viewer open: link and viewer stay, the viewer comes back
+arrive(b)
+sessions.keep_link_for(c)
+arrive(c)
+assert(linked() == 2 and viewer.open, "peek keeps link and viewer")
 
 -- A hold for another folder is discarded by the next arrival
 sessions.link(agent_a, true)
@@ -69,12 +96,12 @@ arrive(a)
 arrive(b)
 assert(linked() == 2, "several: most recently started")
 
--- ...unless the viewer showed another one last
+-- ...unless another one was used (shown in the viewer, linked) last
 sessions.viewed(old_b.pid)
 sessions.link(agent_a, true)
 arrive(a)
 arrive(b)
-assert(linked() == 3, "several: last viewed wins")
+assert(linked() == 3, "several: last used wins")
 
 -- Linked to one of them already (the link lives in b, the editor comes from c): keep it
 sessions.link(agent_b, true)
@@ -82,14 +109,14 @@ arrive(c)
 arrive(b)
 assert(linked() == 2, "several: keeps a link that is already here")
 
--- link_here after a peek: takes b's preferred agent (old_b was viewed last)
+-- link_here after a peek: takes b's preferred agent (agent_b was linked last)
 sessions.link(agent_a, true)
 arrive(a)
 sessions.keep_link_for(b)
 arrive(b)
 assert(linked() == 1, "peeked")
 sessions.link_here()
-assert(linked() == 3, "link_here takes the last viewed agent here")
+assert(linked() == 2, "link_here takes the last used agent here")
 
 -- Following: the linked agent moves to c (a new snapshot shows it there)
 sessions.link(agent_a, true)

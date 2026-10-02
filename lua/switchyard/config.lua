@@ -5,11 +5,17 @@ M.defaults = {
 	-- own tables (see lua/switchyard/agents.lua). Only installed ones are used.
 	agents = { "pi", "claude", "codex" },
 	follow = true,
-	empty_worktree = "keep", -- arriving where no agent runs: "keep" | "unlink" the link
 	terminal = "auto",
 	live_reload = true, -- open files follow changes made by agents
 	yard = {
-		view = "worktrees", -- the view the yard opens in first: "worktrees" or "agents"
+		view = "worktrees", -- the view the yard opens in first: "worktrees" | "agents" | "projects"
+	},
+	-- The projects view: git repos under `roots` (found with fd, skipping
+	-- `exclude`), plus `pinned` folders (git or not) and the ones you went to
+	projects = {
+		roots = { "~" },
+		exclude = { "Library", "node_modules", ".cache", ".Trash", ".local/share/nvim", ".oh-my-zsh", ".claude/plugins" },
+		pinned = {}, -- e.g. { "~/.config/nvim" }
 	},
 	viewer = {
 		width = 0.45, -- share of the editor's width for the viewer split
@@ -17,9 +23,12 @@ M.defaults = {
 	keys = {
 		-- Inside the yard (buffer-local). More arrive with the yard's actions.
 		yard = {
-			activate = "<CR>", -- worktrees: switch · agents: go to (switch + link)
-			alt_activate = "<S-CR>", -- worktrees: peek (keep link) · agents: link only
-			toggle_view = "<Tab>",
+			activate = "<CR>", -- worktrees, projects: switch · agents: go to (switch + link)
+			alt_activate = "<S-CR>", -- worktrees, projects: peek (keep link) · agents: link only
+			view_worktrees = "1", -- show a view
+			view_agents = "2",
+			view_projects = "3",
+			toggle_view = "<Tab>", -- agents view: this repo's agents ⇄ all agents in tmux
 			filter = "/",
 			refresh = "<C-r>",
 			close = "q",
@@ -52,6 +61,11 @@ function M.setup(opts)
 	-- Lists are replaced, not merged
 	if opts.agents then
 		M.options.agents = opts.agents
+	end
+	for _, key in ipairs({ "roots", "exclude", "pinned" }) do
+		if opts.projects and opts.projects[key] then
+			M.options.projects[key] = opts.projects[key]
+		end
 	end
 end
 

@@ -45,9 +45,9 @@ local function ago(time)
 end
 
 -- Choose one of `cwd`'s earlier sessions (every installed agent, newest
--- first, the 9 latest) and continue it in a new tmux session. Sessions
--- still running are left out. Agents without a history offer "continue
--- the last session" instead.
+-- first, the 50 latest; `/` in the menu searches them) and continue it in a
+-- new tmux session. Sessions still running are left out. Agents without a
+-- history offer "continue the last session" instead.
 function M.continue_agent(cwd)
 	local agents = require("switchyard.agents")
 	local here = require("switchyard.sessions").in_folder(cwd)
@@ -73,7 +73,7 @@ function M.continue_agent(cwd)
 	end
 
 	local items = {}
-	for i = 1, math.min(#found, 9) do
+	for i = 1, math.min(#found, 50) do
 		local entry = found[i]
 		local title = (entry.title or "(no title)"):gsub("%s+", " ")
 		if vim.fn.strchars(title) > 50 then

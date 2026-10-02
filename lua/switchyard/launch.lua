@@ -34,7 +34,8 @@ end
 
 -- Start `cmd` for `agent` in a new tmux session in `cwd` (default: the
 -- editor's folder). Once the agent runs, it's linked when it's where the
--- editor is; an agent started in another worktree only gets a message.
+-- editor is (and shown in the viewer); an agent started in another worktree
+-- only gets a message.
 -- callback(session) is optional.
 function M.start(agent, cmd, label, cwd, callback)
 	cwd = cwd or vim.fn.getcwd()
@@ -59,6 +60,7 @@ function M.start(agent, cmd, label, cwd, callback)
 				-- Compared now, not at launch: the editor may have switched meanwhile
 				if s.cwd == vim.fn.getcwd() then
 					sessions.link(s)
+					require("switchyard.view").sync(true) -- watch it work
 				else
 					vim.notify("switchyard: started " .. name)
 				end

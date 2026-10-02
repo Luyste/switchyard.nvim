@@ -1,15 +1,21 @@
--- The yard: one small floating window with two views.
+-- The yard: one small floating window with three views.
 --   worktrees: the current repo's worktrees, with a summary of their agents
+--              (outside a repo: the folder itself)
 --   agents:    this repo's running agents
--- Tab switches views; `/` shows a filter line above the list while filtering.
+--   projects:  git repos on this machine, pinned and recent folders
+-- Tab cycles the views; `/` shows a filter line above the list while
+-- filtering (fuzzy: the letters in order, best matches first).
 local ui = require("switchyard.ui")
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("switchyard_yard")
 
--- The view survives closing: the yard reopens where you left it
+-- The view survives closing: the yard reopens where you left it. So does
+-- the agents view's scope: this repo's agents ("repo") or every agent in tmux
+-- ("all").
 local view = nil
+local agent_scope = "repo"
 
 local state = {
 	win = nil, -- the list
@@ -18,6 +24,9 @@ local state = {
 	input_buf = nil,
 	worktrees = nil, -- the last worktrees.list() result
 	err = nil,
+	projects = {}, -- project folders in the order found
+	project_seen = {},
+	projects_state = nil, -- nil (not looked for yet) | "loading" | "done"
 	rows = {}, -- one entry per list line
 	total = 0, -- rows in this view without the filter
 	filter = "",
@@ -68,88 +77,224 @@ local function truncate(text, width)
 	return vim.fn.strcharpart(text, 0, math.max(width - 1, 0)) .. "…"
 end
 
--- Where the filter matches `text` (case-insensitive), or nil
+-- How `text` matches the filter, fuzzily (its letters in order, not
+-- necessarily next to each other; Neovim's matchfuzzypos): the score and the
+-- matched characters (0-based character indexes as keys), or nil
 local function match(text)
 	if state.filter == "" then
 		return nil
 	end
-	return text:lower():find(state.filter:lower(), 1, true)
+	local result = vim.fn.matchfuzzypos({ text }, state.filter)
+	if #result[1] == 0 then
+		return nil
+	end
+	local positions = {}
+	for _, i in ipairs(result[2][1]) do
+		positions[i] = true
+	end
+	return result[3][1], positions
 end
 
--- Add `text`, highlighting the part that matches the filter
+-- Add `text`, highlighting the characters that match the filter
 local function add_matched(b, text, hl)
-	local s, e = match(text)
-	if not s then
+	local _, positions = match(text)
+	if not positions then
 		return b.add(text, hl)
 	end
-	b.add(text:sub(1, s - 1), hl)
-	b.add(text:sub(s, e), "SwitchyardMatch")
-	b.add(text:sub(e + 1), hl)
+	for i = 0, vim.fn.strchars(text) - 1 do
+		b.add(vim.fn.strcharpart(text, i, 1), positions[i] and "SwitchyardMatch" or hl)
+	end
+end
+
+-- With a filter: the rows where one of `texts_of(row)` matches, best match
+-- first (ties keep their order). Without: all rows.
+local function filtered(rows, texts_of)
+	state.total = #rows -- for the filter's "n / total"
+	if state.filter == "" then
+		return rows
+	end
+	local kept = {}
+	for i, row in ipairs(rows) do
+		local top
+		for _, text in ipairs(texts_of(row)) do
+			local score = match(text)
+			if score and (not top or score > top) then
+				top = score
+			end
+		end
+		if top then
+			table.insert(kept, { row = row, score = top, i = i })
+		end
+	end
+	table.sort(kept, function(a, b)
+		if a.score ~= b.score then
+			return a.score > b.score
+		end
+		return a.i < b.i
+	end)
+	return vim.tbl_map(function(k)
+		return k.row
+	end, kept)
 end
 
 ---------------------------------------------------------------------------
 -- Rows
 ---------------------------------------------------------------------------
 
+-- The editor's folder as the one "worktree" when it isn't in a git repo (a
+-- config folder): agents can still be started and listed there
+local function plain_folder()
+	local cwd = vim.fn.getcwd()
+	return { { path = cwd, branch = vim.fn.fnamemodify(cwd, ":t"), current = true, main = true, symbols = "", plain = true } }
+end
+
+-- The worktrees to show: git's, or the folder itself outside a repo
+local function worktree_list()
+	return state.worktrees or (state.err and plain_folder()) or {}
+end
+
 local function worktree_rows(all)
-	state.total = #(state.worktrees or {})
 	local rows = {}
-	for _, wt in ipairs(state.worktrees or {}) do
+	for _, wt in ipairs(worktree_list()) do
 		local agents = vim.tbl_filter(function(s)
 			return s.cwd == wt.path
 		end, all)
-		local shown = state.filter == ""
-			or match(wt.branch)
-			or vim.iter(agents):any(function(s)
-				return match(sessions().name(s)) ~= nil
-			end)
-		if shown then
-			table.insert(rows, { kind = "worktree", worktree = wt, agents = agents, key = wt.path, path = wt.path })
-		end
+		table.insert(rows, { kind = "worktree", worktree = wt, agents = agents, key = wt.path, path = wt.path })
 	end
-	return rows
+	return filtered(rows, function(row)
+		local texts = { row.worktree.branch }
+		for _, s in ipairs(row.agents) do
+			table.insert(texts, sessions().name(s))
+		end
+		return texts
+	end)
 end
 
--- This repo's agents: the linked one first, then by worktree. Agents whose
--- folder is gone (kept running after "remove worktree") are listed too, so
--- they can still be forked or stopped.
+-- Where an agent works, for the right side of its row: its branch in this
+-- repo; elsewhere its project, and its folder when that's a worktree of it
+local function agent_where(s, branch_of)
+	if branch_of[s.cwd] then
+		return branch_of[s.cwd]
+	elseif vim.fn.isdirectory(s.cwd) == 0 then
+		return "removed worktree"
+	end
+	local root = require("switchyard.projects").root(s.cwd)
+	local project, folder = vim.fn.fnamemodify(root, ":t"), vim.fn.fnamemodify(s.cwd, ":t")
+	return folder == project and project or (project .. " · " .. folder)
+end
+
+-- This repo's agents (agent_scope "repo"), or every agent in tmux ("all"):
+-- the linked one first, then this repo's, then by folder. Agents whose folder
+-- is gone (kept running after "remove worktree") are listed too, so they can
+-- still be forked or stopped.
 local function agent_rows(all)
 	local branch_of = {}
-	for _, wt in ipairs(state.worktrees or {}) do
+	for _, wt in ipairs(worktree_list()) do
 		branch_of[wt.path] = wt.branch
 	end
-	local mine = vim.tbl_filter(function(s)
-		return branch_of[s.cwd] ~= nil or vim.fn.isdirectory(s.cwd) == 0
-	end, all)
+	local mine = agent_scope == "all" and vim.list_slice(all)
+		or vim.tbl_filter(function(s)
+			return branch_of[s.cwd] ~= nil or vim.fn.isdirectory(s.cwd) == 0
+		end, all)
 	local linked = sessions().linked_pid()
 	table.sort(mine, function(a, b)
 		if (a.pid == linked) ~= (b.pid == linked) then
 			return a.pid == linked
+		end
+		if (branch_of[a.cwd] ~= nil) ~= (branch_of[b.cwd] ~= nil) then
+			return branch_of[a.cwd] ~= nil
 		end
 		if a.cwd ~= b.cwd then
 			return a.cwd < b.cwd
 		end
 		return a.pid < b.pid
 	end)
-	state.total = #mine -- for the filter's "n / total"
 	local rows = {}
 	for _, s in ipairs(mine) do
-		local where = branch_of[s.cwd] or "removed worktree"
-		if state.filter == "" or match(sessions().name(s)) or match(where) then
-			table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
+		local where = agent_where(s, branch_of)
+		table.insert(rows, { kind = "agent", session = s, where = where, key = "pid:" .. s.pid, path = s.cwd })
+	end
+	return filtered(rows, function(row)
+		return { sessions().name(row.session), row.where }
+	end)
+end
+
+-- Add a project folder (once, if it exists). True when it was new.
+local function add_project(path)
+	path = vim.fn.fnamemodify(vim.fn.expand(path), ":p"):gsub("/$", "")
+	if state.project_seen[path] or vim.fn.isdirectory(path) == 0 then
+		return false
+	end
+	state.project_seen[path] = true
+	table.insert(state.projects, path)
+	return true
+end
+
+-- The projects, first the ones known right away (the current one, pinned,
+-- recent, the last scan), then what fd finds now (redrawn as they come)
+local function load_projects()
+	if state.projects_state then
+		return
+	end
+	state.projects_state = "loading"
+	local projects = require("switchyard.projects")
+	add_project(projects.root(vim.fn.getcwd()))
+	for _, list in ipairs({ require("switchyard.config").options.projects.pinned, projects.recent(), projects.cached() }) do
+		for _, path in ipairs(list) do
+			add_project(path)
 		end
 	end
-	return rows
+	local pending = false
+	projects.find(function(path)
+		if add_project(path) and not pending then
+			pending = true
+			vim.defer_fn(function()
+				pending = false
+				M.render()
+			end, 100)
+		end
+	end, function()
+		state.projects_state = "done"
+		M.render()
+	end)
+end
+
+local function project_rows(all)
+	local projects = require("switchyard.projects")
+	local count = {}
+	for _, s in ipairs(all) do
+		local root = projects.root(s.cwd)
+		count[root] = (count[root] or 0) + 1
+	end
+	for root in pairs(count) do
+		add_project(root) -- projects with agents belong in the list
+	end
+	local current = projects.root(vim.fn.getcwd())
+	local rows = {}
+	for _, path in ipairs(state.projects) do
+		table.insert(rows, {
+			kind = "project",
+			key = path,
+			path = path,
+			name = vim.fn.fnamemodify(path, ":t"),
+			current = path == current,
+			agents = count[path] or 0,
+		})
+	end
+	return filtered(rows, function(row)
+		return { row.name } -- not the path: fuzzy letters match almost any path
+	end)
 end
 
 -- One line: a left part (builder) and an optional right part { text, hl }
-local function number(b, i)
-	b.add(i <= 9 and (" " .. i .. " ") or "   ", "SwitchyardDim")
+-- The left margin of every row
+local function number(b)
+	b.add(" ")
 end
 
 local function worktree_line(i, row, linked)
 	local wt, b = row.worktree, builder()
-	number(b, i)
+	number(b)
 	b.add(wt.current and "@ " or "  ", "SwitchyardCurrent")
 	add_matched(b, wt.branch, wt.current and "SwitchyardCurrent" or nil)
 	if wt.symbols ~= "" then
@@ -168,10 +313,21 @@ local function worktree_line(i, row, linked)
 	return b
 end
 
+local function project_line(i, row)
+	local b = builder()
+	number(b)
+	b.add(row.current and "@ " or "  ", "SwitchyardCurrent")
+	add_matched(b, row.name, row.current and "SwitchyardCurrent" or nil)
+	if row.agents > 0 then
+		b.add("  ● " .. row.agents, "SwitchyardAgent")
+	end
+	return b, { vim.fn.fnamemodify(row.path, ":~:h"), "SwitchyardDim" }
+end
+
 local function agent_line(i, row, linked)
 	local s, b = row.session, builder()
 	local is_linked = s.pid == linked
-	number(b, i)
+	number(b)
 	b.add("● ", is_linked and "SwitchyardLinked" or "SwitchyardAgent")
 	add_matched(b, sessions().name(s), is_linked and "SwitchyardLinked" or nil)
 	return b, { row.where, "SwitchyardDim" }
@@ -181,13 +337,28 @@ end
 -- Title, footer, layout
 ---------------------------------------------------------------------------
 
+local views = { "worktrees", "agents", "projects" } -- in key order: 1, 2, 3
+
+-- The title: the views as tabs with their keys, the shown one highlighted
 local function title()
-	return { { " switchyard ", "SwitchyardHeading" }, { "· " .. view .. " ", "SwitchyardDim" } }
+	local parts = { { " switchyard  ", "SwitchyardHeading" } }
+	local k = keys()
+	for _, name in ipairs(views) do
+		local shown = name == view
+		table.insert(parts, { k["view_" .. name] .. " ", shown and "SwitchyardKey" or "SwitchyardDim" })
+		local label = (name == "agents" and agent_scope == "all") and "agents (all)" or name
+		table.insert(parts, { label .. "  ", shown and "SwitchyardHeading" or "SwitchyardDim" })
+	end
+	return parts
 end
 
 local function hints(width)
-	local text = view == "worktrees" and " ⏎ switch  ⇧⏎ peek  ⇥ agents  / filter  . actions  ? keys"
-		or " ⏎ go to  ⇧⏎ link  ⇥ worktrees  / filter  . actions  ? keys"
+	local text = ({
+		worktrees = " ⏎ switch  ⇧⏎ peek  a agent  / filter  . actions  ? keys",
+		agents = agent_scope == "all" and " ⏎ go to  ⇧⏎ link  ⇥ this repo  / filter  . actions  ? keys"
+			or " ⏎ go to  ⇧⏎ link  ⇥ all agents  / filter  . actions  ? keys",
+		projects = " ⏎ switch  ⇧⏎ peek  a agent  / filter  . actions  ? keys",
+	})[view]
 	return truncate(text, width - 1)
 end
 
@@ -251,7 +422,13 @@ local function render()
 		return
 	end
 	local all = sessions().all()
-	state.rows = view == "agents" and agent_rows(all) or worktree_rows(all)
+	if view == "projects" then
+		state.rows = project_rows(all)
+	elseif view == "agents" then
+		state.rows = agent_rows(all)
+	else
+		state.rows = worktree_rows(all)
+	end
 
 	-- Lines, and the width they need
 	local linked = sessions().linked_pid()
@@ -260,6 +437,8 @@ local function render()
 		local b, right
 		if row.kind == "worktree" then
 			b, right = worktree_line(i, row, linked)
+		elseif row.kind == "project" then
+			b, right = project_line(i, row)
 		else
 			b, right = agent_line(i, row, linked)
 		end
@@ -267,9 +446,11 @@ local function render()
 		want = math.max(want, width_of(b.text) + (right and width_of(right[1]) + 4 or 1))
 	end
 	if #parts == 0 then
-		local message = state.worktrees and "No matches" or (state.err or "Loading…")
-		if view == "agents" and state.filter == "" and state.worktrees then
-			message = "No agents running"
+		local message = (state.worktrees or state.err) and "No matches" or "Loading…"
+		if view == "agents" and state.filter == "" and (state.worktrees or state.err) then
+			message = agent_scope == "repo" and "No agents in this repo  (⇥ all agents)" or "No agents running"
+		elseif view == "projects" then
+			message = state.projects_state == "done" and "No matches" or "Looking for projects…"
 		end
 		local b = builder()
 		b.add("   " .. message, "SwitchyardDim")
@@ -308,6 +489,7 @@ local function render()
 	state.selected[view] = state.rows[target] and state.rows[target].key
 	update_count()
 end
+M.render = render -- for the projects scan, which finishes later
 
 ---------------------------------------------------------------------------
 -- Actions
@@ -340,7 +522,7 @@ local function peek(path)
 end
 
 -- Enter (alt = Shift+Enter) on `row`.
---   worktree: switch (the link moves along) / peek (the link stays)
+--   worktree, project: switch (the link moves along) / peek (the link stays)
 --   agent:    go to it (switch to its worktree + link) / link only, stay here
 local function activate(row, alt)
 	if row.kind == "agent" and alt then
@@ -348,7 +530,7 @@ local function activate(row, alt)
 		return render()
 	end
 	M.close()
-	if row.kind == "worktree" then
+	if row.kind ~= "agent" then
 		if alt then
 			return peek(row.path)
 		end
@@ -365,14 +547,31 @@ local function activate(row, alt)
 	end)
 end
 
+local function show_view(name)
+	view = name
+	if view == "projects" then
+		load_projects()
+	end
+	render()
+end
+
+-- Tab, in the agents view only: this repo's agents or all of them
 local function toggle_view()
-	view = view == "worktrees" and "agents" or "worktrees"
+	if view ~= "agents" then
+		return
+	end
+	agent_scope = agent_scope == "all" and "repo" or "all"
+	state.selected.agents = nil
 	render()
 end
 
 -- Worktrees and agents, both looked at again (Ctrl-R, and on opening)
 local function refresh()
 	sessions().refresh() -- redraws through SwitchyardSessionsChanged when agents changed
+	if view == "projects" and state.projects_state == "done" then
+		state.projects, state.project_seen, state.projects_state = {}, {}, nil
+		load_projects()
+	end
 	require("switchyard.worktrees").list(vim.fn.getcwd(), function(worktrees, err)
 		state.worktrees, state.err = worktrees, err
 		if not state.selected.worktrees then
@@ -483,7 +682,7 @@ end
 local function with_worktree(title, except, callback)
 	local list = vim.tbl_filter(function(wt)
 		return wt.path ~= except
-	end, state.worktrees or {})
+	end, worktree_list())
 	table.sort(list, function(a, b)
 		return a.current and not b.current
 	end)
@@ -495,16 +694,18 @@ local function with_worktree(title, except, callback)
 			end,
 		}
 	end, list)
-	table.insert(items, {
-		label = "  new worktree…",
-		key = keys().new,
-		action = function()
-			require("switchyard.actions").create_worktree(vim.fn.getcwd(), function(path, branch)
-				refresh()
-				callback({ path = path, branch = branch })
-			end)
-		end,
-	})
+	if not state.err then -- a git repo: a new worktree can be made
+		table.insert(items, {
+			label = "  new worktree…",
+			key = keys().new,
+			action = function()
+				require("switchyard.actions").create_worktree(vim.fn.getcwd(), function(path, branch)
+					refresh()
+					callback({ path = path, branch = branch })
+				end)
+			end,
+		})
+	end
 	require("switchyard.menu").open({ title = title, items = items })
 end
 
@@ -683,6 +884,38 @@ local actions = {
 			end,
 		},
 	},
+	projects = {
+		{
+			key = "activate",
+			label = "switch to the project",
+			run = activate,
+		},
+		{
+			key = "alt_activate",
+			label = "peek: switch, keep the link",
+			run = function(row)
+				activate(row, true) -- Shift+Enter
+			end,
+		},
+		{
+			key = "start_agent",
+			label = "start an agent there (the editor stays)",
+			run = function(row)
+				require("switchyard.actions").with_agent(function(agent)
+					require("switchyard.launch").new(agent, row.path)
+				end)
+			end,
+		},
+		{
+			key = "copy_path",
+			label = "copy path",
+			run = function(row)
+				vim.fn.setreg("+", row.path)
+				vim.fn.setreg('"', row.path)
+				vim.notify("switchyard: copied " .. vim.fn.fnamemodify(row.path, ":~"))
+			end,
+		},
+	},
 }
 
 -- Run the current view's action for key name `name` on the selected row
@@ -719,9 +952,21 @@ local function open_menu(all_keys)
 		end
 	end
 	if all_keys then
-		local other = view == "worktrees" and "agents" or "worktrees"
+		for _, name in ipairs(views) do
+			if name ~= view then
+				table.insert(items, {
+					label = name .. " view",
+					key = keys()["view_" .. name],
+					action = function()
+						show_view(name)
+					end,
+				})
+			end
+		end
+		if view == "agents" then
+			table.insert(items, { label = "this repo / all agents", key = key_label("toggle_view"), action = toggle_view })
+		end
 		for _, nav in ipairs({
-			{ "toggle_view", other .. " view", toggle_view },
 			{ "filter", "filter", start_filter },
 			{ "refresh", "refresh", refresh },
 			{ "close", "close the yard", M.close },
@@ -729,7 +974,9 @@ local function open_menu(all_keys)
 			table.insert(items, { label = nav[2], key = key_label(nav[1]), action = nav[3] })
 		end
 	end
-	local subject = row and (row.kind == "worktree" and row.worktree.branch or sessions().name(row.session)) or view
+	local subject = row
+			and ((row.kind == "worktree" and row.worktree.branch) or (row.kind == "project" and row.name) or sessions().name(row.session))
+		or view
 	require("switchyard.menu").open({ title = all_keys and (view .. " · keys") or subject, items = items })
 end
 
@@ -789,11 +1036,9 @@ local function set_keymaps()
 			run(name)
 		end)
 	end
-	for i = 1, 9 do
-		map(tostring(i), function()
-			if state.rows[i] then
-				activate(state.rows[i])
-			end
+	for _, name in ipairs(views) do
+		map(k["view_" .. name], function()
+			show_view(name)
 		end)
 	end
 	map(k.actions, function()
@@ -860,9 +1105,13 @@ function M.open()
 	ui.set_highlights()
 	state.origin = vim.api.nvim_get_current_win()
 	state.filter, state.rows, state.worktrees, state.err = "", {}, nil, nil
-	-- Start on the linked agent / the current worktree
+	state.projects, state.project_seen, state.projects_state = {}, {}, nil
+	-- Start on the linked agent / the current worktree / the current project
 	local linked = sessions().linked_pid()
-	state.selected = { agents = linked and ("pid:" .. linked) or nil }
+	state.selected = {
+		agents = linked and ("pid:" .. linked) or nil,
+		projects = require("switchyard.projects").root(vim.fn.getcwd()),
+	}
 
 	state.buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[state.buf].bufhidden = "hide"
@@ -882,6 +1131,9 @@ function M.open()
 	set_keymaps()
 	set_autocmds()
 	ui.hide_cursor() -- the WinEnter autocmd came too late for this first entry
+	if view == "projects" then
+		load_projects()
+	end
 	render()
 	refresh()
 end

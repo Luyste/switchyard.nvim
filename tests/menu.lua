@@ -30,5 +30,34 @@ end)
 assert(answer == nil, "cancelled")
 assert(#vim.api.nvim_list_wins() == 1, "closed")
 
+-- `/` filters fuzzily; Enter in the filter line takes the best match
+local picked
+menu.open({
+	title = "continue a session",
+	items = {
+		{ label = "claude  Website concepts review", action = function()
+			picked = 1
+		end },
+		{ label = "pi  fix the router tests", action = function()
+			picked = 2
+		end },
+		{ label = "claude  Remove statusbar", action = function()
+			picked = 3
+		end },
+	},
+})
+local list = vim.api.nvim_get_current_buf()
+keys("/rtt")
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = vim.api.nvim_get_current_buf() })
+local shown = vim.api.nvim_buf_get_lines(list, 0, -1, false)
+-- best match first; "Website concepts review" has no r…t…t in order
+assert(shown[1]:find("router tests") and not table.concat(shown):find("Website"), vim.inspect(shown))
+keys("A<CR>") -- fed keys leave insert mode: back in, then Enter
+vim.wait(100, function()
+	return picked ~= nil
+end)
+assert(picked == 2, "picked the match: " .. tostring(picked))
+assert(vim.api.nvim_get_current_win() == editor, "focus back after filtering")
+
 print("menu: ok")
 
