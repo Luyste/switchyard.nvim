@@ -11,7 +11,7 @@ local function floats()
 end
 
 local editor = vim.api.nvim_get_current_win()
-yard.open()
+require("switchyard").open_yard() -- the public function, as mapped in a config
 assert(yard.is_open() and floats() == 1, "opens one window")
 yard.close()
 assert(not yard.is_open() and floats() == 0, "closes its window")

@@ -53,7 +53,7 @@ function M.status()
 end
 
 function M.open_yard()
-	require("switchyard.picker").open()
+	require("switchyard.yard").open()
 end
 
 function M.toggle_view()
