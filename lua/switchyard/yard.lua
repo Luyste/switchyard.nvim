@@ -547,8 +547,6 @@ local function activate(row, alt)
 	end)
 end
 
-local order = { worktrees = "agents", agents = "projects", projects = "worktrees" }
-
 local function show_view(name)
 	view = name
 	if view == "projects" then
@@ -557,15 +555,14 @@ local function show_view(name)
 	render()
 end
 
--- Tab: in the agents view, this repo's agents or all of them; elsewhere the
--- next view (also while filtering, where 1/2/3 are text)
+-- Tab, in the agents view only: this repo's agents or all of them
 local function toggle_view()
-	if view == "agents" then
-		agent_scope = agent_scope == "all" and "repo" or "all"
-		state.selected.agents = nil
-		return render()
+	if view ~= "agents" then
+		return
 	end
-	show_view(order[view])
+	agent_scope = agent_scope == "all" and "repo" or "all"
+	state.selected.agents = nil
+	render()
 end
 
 -- Worktrees and agents, both looked at again (Ctrl-R, and on opening)
@@ -966,8 +963,10 @@ local function open_menu(all_keys)
 				})
 			end
 		end
+		if view == "agents" then
+			table.insert(items, { label = "this repo / all agents", key = key_label("toggle_view"), action = toggle_view })
+		end
 		for _, nav in ipairs({
-			{ "toggle_view", view == "agents" and "this repo / all agents" or "next view", toggle_view },
 			{ "filter", "filter", start_filter },
 			{ "refresh", "refresh", refresh },
 			{ "close", "close the yard", M.close },

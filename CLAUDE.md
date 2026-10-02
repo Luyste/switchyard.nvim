@@ -88,10 +88,10 @@ anything, then **inspect the actual code**: some items below are marked
     agent A (with the prompt builder's cross-worktree paths).
 - **Three yard views, one meaning per key:** 1 worktrees, 2 agents, 3
   projects (`keys.yard.view_*`; the title shows them as tabs; Tab cycles;
-  `yard.view` = first; rows have no numbers / 1-9 picks any more). In the
-  agents view Tab toggles `agent_scope` "repo" ⇄ "all" (every agent in tmux,
-  other projects labelled "project · folder"; remembered like the view); in
-  the other views Tab is "next view" (needed while filtering: digits are text). Keys act on what the current view shows
+  `yard.view` = first; rows have no numbers / 1-9 picks any more). Tab only
+  works in the agents view: `agent_scope` "repo" ⇄ "all" (every agent in
+  tmux, other projects labelled "project · folder"; remembered like the
+  view). While filtering, digits are text: Esc first to switch views. Keys act on what the current view shows
   (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
   Enter on an agent = "go to" (switch + link); Shift+Enter = link only. `/`
   filters fuzzily (`vim.fn.matchfuzzypos`, best score first, matched letters

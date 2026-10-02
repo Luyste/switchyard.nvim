@@ -122,8 +122,7 @@ name ever changes.
 
 Open it with `open_yard()` or `:Switchyard`. It opens on the current
 worktree (or the linked agent, or the current project) in normal mode. The
-title shows the views as tabs: `1` worktrees, `2` agents, `3` projects (`Tab`
-cycles them):
+title shows the views as tabs: `1` worktrees, `2` agents, `3` projects:
 
 | View | Shows |
 | --- | --- |
@@ -140,7 +139,7 @@ matched letters highlighted.
 | `Enter` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
 | `Shift+Enter` | peek: switch, keep link and viewer | link it, stay where you are | peek |
 | `1` / `2` / `3` | worktrees / agents / projects view | same | same |
-| `Tab` | next view | this repo's agents ⇄ all agents | next view |
+| `Tab` | | this repo's agents ⇄ all agents | |
 | `n` | new worktree | new agent in a worktree | |
 | `N` | dispatch a task | dispatch a task | |
 | `D` | remove worktree (choose: keep or stop its agents) | stop the agent | |

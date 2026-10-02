@@ -111,6 +111,8 @@ shows("pi%-login")
 assert(not shown():find("pi%-other"), shown())
 press("1")
 shows("feature/login%-form")
+press("<Tab>") -- nothing outside the agents view
+assert(shown():find("feature/login%-form") and vim.wo[yard_win()].winbar:find("worktrees"), shown())
 -- Fuzzy: "flf" matches feature/login-form (letters in order), not fix-tests
 filter("flf")
 assert(count() == "1 / 3", tostring(count()))

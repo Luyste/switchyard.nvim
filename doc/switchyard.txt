@@ -131,8 +131,7 @@ name ever changes.
 Open it with |switchyard.open_yard()| or |:Switchyard|. It opens in normal
 mode on the current worktree (or the linked agent, or the current project).
 The first view is set by |switchyard-config-yard.view|. The title shows the
-views as tabs with their keys: 1 worktrees, 2 agents, 3 projects. <Tab>
-cycles them.
+views as tabs with their keys: 1 worktrees, 2 agents, 3 projects.
 
 Views ~
                                                    *switchyard-yard-worktrees*
@@ -162,7 +161,7 @@ Key         Worktrees view                Agents view ~
  (view_worktrees, view_agents, view_projects)
 <S-CR>      peek: switch, keep the link   link it, stay where you are
  (alt_activate) and the viewer
-<Tab>       next view                     this repo's agents / all
+<Tab>                                     this repo's agents / all
                                           agents in tmux
  (toggle_view)
 n (new)     new worktree                  new agent in a worktree
@@ -213,7 +212,7 @@ matches come first; the matched letters are highlighted. In the input:
     <S-CR>        alternate action (peek / link only)
     <C-n>, <Down> next row
     <C-p>, <Up>   previous row
-    <Tab>         next view
+    <Tab>         agents view: this repo's agents / all agents
     <Esc>, <C-c>  stop filtering, back to the list
 
 The yard closes when you move to a normal (non-floating) window.
@@ -528,7 +527,7 @@ keys.yard ~
     view_worktrees  1         the worktrees view
     view_agents     2         the agents view
     view_projects   3         the projects view
-    toggle_view     <Tab>     switch between the views
+    toggle_view     <Tab>     this repo's agents / all agents (agents view)
     filter          /         filter the list
     refresh         <C-r>     refresh
     close           q         close the yard
