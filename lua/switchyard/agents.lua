@@ -33,7 +33,9 @@ end
 -- Claude Code registers each running session in ~/.claude/sessions/<pid>.json
 local function claude_session_id(pid)
 	local ok, info = pcall(function()
-		return vim.json.decode(table.concat(vim.fn.readfile(vim.fn.expand("~/.claude/sessions/") .. pid .. ".json"), ""))
+		return vim.json.decode(
+			table.concat(vim.fn.readfile(vim.fn.expand("~/.claude/sessions/") .. pid .. ".json"), "")
+		)
 	end)
 	return ok and type(info) == "table" and type(info.sessionId) == "string" and info.sessionId or nil
 end
