@@ -15,7 +15,6 @@ function M.check()
 	vim.health.start("switchyard: programs")
 	check_program("git", { "--version" }, "brew install git")
 	check_program("tmux", { "-V" }, "brew install tmux")
-	check_program("fd", { "--version" }, "brew install fd (finds projects)")
 
 	vim.health.start("switchyard: options")
 	local opts = require("switchyard.config").options

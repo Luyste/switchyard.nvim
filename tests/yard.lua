@@ -1,4 +1,4 @@
--- The yard: opening and closing, fuzzy filtering, projects, a plain folder.
+-- The yard: opening and closing, fuzzy filtering, a plain folder.
 -- Run: nvim --headless -u NONE --cmd "set rtp+=." -l tests/yard.lua
 vim.opt.rtp:prepend(vim.fn.getcwd()) -- the test cds away: "." would point elsewhere
 require("switchyard").setup({})
@@ -37,8 +37,8 @@ git(root .. "/repo", "worktree", "add", "-q", "-b", "feature/login-form", root .
 git(root .. "/repo", "worktree", "add", "-q", "-b", "fix-tests", root .. "/repo.fix")
 vim.cmd.cd(root .. "/repo")
 
--- Two agents: one in a worktree of this repo, one in another project. No fd,
--- no history here.
+-- Two agents: one in a worktree of this repo, one in another project. No
+-- history here.
 local agent = { name = "pi", cmd = { "pi" } }
 local agents = {
 	{ pid = 1, cwd = root .. "/repo.login", agent = agent, tmux = "pi-login", pane = "%1", started = 0 },
@@ -49,18 +49,6 @@ sessions.all = function()
 	return agents
 end
 sessions.refresh = function() end
-local projects = require("switchyard.projects")
-projects.find = function(on_found, on_done)
-	on_found(root .. "/other")
-	on_done()
-end
-projects.recent = function()
-	return {}
-end
-projects.cached = function()
-	return {}
-end
-require("switchyard.config").options.projects.pinned = { root .. "/notes" }
 
 local yard_win -- below
 local function shown()
@@ -103,16 +91,12 @@ shows("feature/login%-form")
 press("2") -- agents: this repo's only
 shows("pi%-login")
 assert(not shown():find("pi%-other"), shown())
-press("<Tab>") -- all agents in tmux: the other project's too, with its name
-shows("pi%-other.*other")
-assert(vim.wo[yard_win()].winbar:find("agents %(all%)"), "the title says all")
-press("<Tab>") -- back to this repo's
+press("<Tab>") -- Tab: back to the worktrees
+shows("feature/login%-form")
+press("<Tab>") -- and to the agents again
 shows("pi%-login")
-assert(not shown():find("pi%-other"), shown())
 press("1")
 shows("feature/login%-form")
-press("<Tab>") -- nothing outside the agents view
-assert(shown():find("feature/login%-form") and vim.wo[yard_win()].winbar:find("worktrees"), shown())
 -- Fuzzy: "flf" matches feature/login-form (letters in order), not fix-tests
 filter("flf")
 assert(count() == "1 / 3", tostring(count()))
@@ -120,19 +104,12 @@ assert(shown():find("login") and not shown():find("fix%-tests"), shown())
 press("A<Esc>") -- fed keys leave insert mode: back in, then Esc clears the filter
 shows("fix%-tests")
 
--- 3: projects (the current one, pinned, then what fd finds)
-press("3")
-shows("other")
-assert(shown():find("@ repo") and shown():find("notes"), shown())
-filter("oth")
-assert(count() == "1 / 3", tostring(count()))
-press("A<Esc>")
 yard.close()
 
 -- Outside git: the folder itself is the one worktree
 vim.cmd.cd(root .. "/notes")
 yard.open()
-press("1") -- worktrees (the yard remembered projects)
+press("1") -- worktrees
 shows("@ notes")
 yard.close()
 

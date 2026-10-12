@@ -32,8 +32,7 @@ anything, then **inspect the actual code**: some items below are marked
   (repo and folder) now belongs to a separate Rust program. Inside Neovim the
   plugin is still `switchyard` (`require("switchyard")`, `:Switchyard`).
 - My config loads it in `~/.config/nvim/lua/plugins/switchyard.lua`:
-  - `require("switchyard").setup({ projects = { pinned = { "~/.config/nvim" } } })`
-    (my nvim config is in a bare dotfiles repo: no `.git` of its own)
+  - `require("switchyard").setup({ viewer = { layout = "float", bar = true } })`
   - A `User SwitchyardSwitched` autocmd that opens nvim-tree (inside
     `vim.schedule`) and `wincmd p`.
   - Keymaps via a helper `sy(fn)` that returns `function() require("switchyard")[fn]() end`
@@ -81,22 +80,21 @@ anything, then **inspect the actual code**: some items below are marked
   - Starting an agent in the editor's folder links it and shows it (launch).
 - **Enter vs Shift+Enter in the yard (switching):**
   - Enter = **switch**: the editor goes there and the arrival rules apply.
-  - Shift+Enter = **peek** (worktrees, projects, plain folders): the editor goes
+  - Shift+Enter = **peek** (worktrees, plain folders): the editor goes
     there but the link AND the viewer stay as they were (`keep_link_for(dir)`
     records whether the viewer was open; `on_arrival` brings it back). The link stays
     on the current agent, whatever the worktree contains (statusline shows
     `agent (in <other worktree>)`). Used to grab context from B and send it to
     agent A (with the prompt builder's cross-worktree paths).
-- **Three yard views, one meaning per key:** 1 worktrees, 2 agents, 3
-  projects (`keys.yard.view_*`; the title shows them as tabs; Tab cycles;
-  `yard.view` = first; rows have no numbers / 1-9 picks any more). Tab only
-  works in the agents view: `agent_scope` "repo" ⇄ "all" (every agent in
-  tmux, other projects labelled "project · folder"; remembered like the
-  view). While filtering, digits are text: Esc first to switch views. Keys act on what the current view shows
+- **Two yard views, one meaning per key:** 1 worktrees, 2 agents
+  (`keys.yard.view_*`; the title shows them as tabs; Tab switches;
+  `yard.view` = first; rows have no numbers / 1-9 picks any more). No
+  projects view and no "all agents" scope (removed Oct 2026: one project per
+  yard, for another repo you step out). While filtering, digits are text: Esc first to switch views. Keys act on what the current view shows
   (`n` = new worktree / new agent, `D` = remove worktree / stop agent).
   Enter on an agent = "go to" (switch + link); Shift+Enter = link only. `/`
   filters fuzzily (`vim.fn.matchfuzzypos`, best score first, matched letters
-  highlighted; projects match on the folder name only).
+  highlighted).
 - **Prompt builder = chat convention:** Enter sends, Shift+Enter is a new line.
 - **Dispatch** (fire-and-forget): describe a task → new worktree + agent started
   there with the task as its first message. The editor does NOT switch and the
@@ -111,20 +109,14 @@ anything, then **inspect the actual code**: some items below are marked
   bracketed paste + Enter into the pane. Following: the pane's
   `pane_current_path` (the agent's real working directory). No agent
   extensions (pi-nvim is gone), no sockets, no registries.
-- **Dependencies:** hard dependencies are PROGRAMS only (git, tmux, fd, the
+- **Dependencies:** hard dependencies are PROGRAMS only (git, tmux, the
   agents; reported by the health check). switchyard never requires another
   Neovim plugin. Every plugin integration is optional (`pcall(require, …)`),
   lives in `lua/switchyard/integrations/`, has a no-dependency fallback or is
   simply not offered, and is reported by the health check. Pluggable features
   follow the `terminal` pattern: `"auto" | <name> | function(...)`.
-- **Projects view:** projects only (no worktrees of other repos): the
-  current project, `projects.pinned`, projects with agents, recent ones
-  (`stdpath("state")/switchyard/recent.json`), the cached last scan
-  (`projects.json`), then `fd` over `projects.roots` minus
-  `projects.exclude` (junk: Library, node_modules, .cache, .Trash, nvim's
-  pack dir, .oh-my-zsh, .claude/plugins). Enter = switch to its main
-  worktree. `&` and `*` stay about the current repo (outside git: the folder
-  itself is the one "worktree", so agents can be started there).
+- **Outside git** the folder itself is the one "worktree", so agents can be
+  started there.
 - **Window style:** titles and key hints never go in the border (Neovide
   draws them over the border line). Title = the float's winbar
   (`ui.title(win, chunks)`), hints = a virtual line below the last line
@@ -221,17 +213,11 @@ lua/switchyard/
                              (continue lists the 50 latest sessions); menu.input for text
   live.lua                   live reload: one fs_event per folder of loaded file buffers
                              (refcounted), debounced checktime, skips modified buffers
-  yard.lua                   the yard: three views (worktrees, agents, projects), Tab
-                             cycles; fuzzy `/` filter (`filtered(rows, texts_of)` +
-                             `match` = matchfuzzypos); projects: `load_projects()` once
-                             per open (current, pinned, recent, cached, then fd via
-                             projects.find, redrawn every 100 ms as results come);
+  yard.lua                   the yard: two views (worktrees, agents), Tab switches;
+                             fuzzy `/` filter (`filtered(rows, texts_of)` +
+                             `match` = matchfuzzypos);
                              `worktree_list()` = git's or `plain_folder()` outside git.
                              close() returns to the window it was opened from
-  projects.lua               (also) root(dir) (a linked worktree's `.git` file gives
-                             the main repo), remember/recent, cached, find(on_found,
-                             on_done) = fd --hidden --no-ignore -t d --prune -g .git
-                             (streamed, cached)
   view.lua                   the viewer (split, or float with `viewer.layout = "float"`:
                              NE, zindex 40, VimResized; winbar with agent tabs,
                              external terminal); `viewer.bar`: one-line float bottom
@@ -245,7 +231,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
                              (live: live reload; arrival: arrival rules + peek (fake viewer);
                              history: earlier sessions from a fake home;
                              launch: linking after a start; yard: open/close, fuzzy
-                             filter, projects view (fd faked), plain folder;
+                             filter, Tab, plain folder;
                              view: showing/hiding, also as the last window)
 ```
 
@@ -262,8 +248,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
 - **Continue earlier sessions** (`c` in the worktrees view): a menu of the
   worktree's earlier sessions (all installed agents, newest first, running ones
   left out), so agents can be stopped (`D`) to free memory and resumed later.
-- **Yard, Oct 2026:** fuzzy `/` filter, a projects view (see Conventions),
-  the folder itself as the one worktree outside git. (An fzf-lua version of
+- **Yard, Oct 2026:** fuzzy `/` filter, the folder itself as the one
+  worktree outside git. The projects view and the "all agents" scope from
+  PR #4 were removed again (Oct 12). (An fzf-lua version of
   the yard and the menus was built and reverted, see git history of
   feature/fzf-yard.)
 - **Compact yard** (replaced part 1): one float sized to its content (width
@@ -328,7 +315,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   or a float no longer eats the tree window.
 - Checked: `tmux.new` cds inside the shell line; `menu.lua` used by
   `launch.pick` and the viewer's choice; `ui.lua` used by yard.lua; config has
-  `viewer.width`, `terminal`, `live_reload`, `projects`.
+  `viewer.width`, `terminal`, `live_reload`, `worktrees`.
 
 - **Viewer terminal options from sidekick.nvim** (Oct 2026): the viewer split
   glitched sometimes. sidekick.nvim was tried as the viewer and then dropped

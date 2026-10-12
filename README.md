@@ -4,13 +4,13 @@
 
 switchyard is a Neovim plugin for working with several AI coding agents at
 once, each in its own git worktree. It gives you one picker to switch between
-worktrees, agents and projects, a terminal split to talk to an agent, a prompt
+worktrees and agents, a terminal split to talk to an agent, a prompt
 builder that sends code from your editor, and an editor that keeps up with
 what the agent is doing.
 
 <sub>The demos below use a terminal with `<Space>` as leader; switchyard sets
 no keys itself (see [Keymaps](#keymaps)). They were recorded before the yard
-got its projects view and fuzzy filter.</sub>
+got its fuzzy filter.</sub>
 
 ## Why
 
@@ -22,15 +22,14 @@ together:
 - **Tracks** are git worktrees.
 - **Trains** are agent sessions (pi, Claude Code, codex, or any CLI agent),
   each running in its own tmux session.
-- **The yard** is one picker in Neovim to switch worktrees and projects and
-  manage agents.
+- **The yard** is one picker in Neovim to switch worktrees and manage agents.
 - Your editor is **linked** to one agent: prompts go there, and when that agent
   moves to another worktree, the editor follows.
 
 ## Features
 
-- **The yard**: a small floating window with three views: *worktrees*,
-  *agents* and *projects* (any git repo on your machine, plus pinned folders).
+- **The yard**: a small floating window with two views: *worktrees* and
+  *agents*.
   Switch, peek, create and remove worktrees, start, fork, rename and stop
   agents, all with single keys and a `.` action menu; `/` filters fuzzily.
 - **Linking and following**: the editor goes with the agent of where it is:
@@ -64,8 +63,6 @@ together:
   [codex](https://github.com/openai/codex) work out of the box; any other
   CLI agent can be added in `agents` (see [Agents](#agents)). No agent
   extensions are needed.
-
-- **fd**: finds the projects (the yard's projects view)
 
 Run `:checkhealth switchyard` to see what's found.
 
@@ -125,37 +122,36 @@ name ever changes.
 ### The yard
 
 Open it with `open_yard()` or `:Switchyard`. It opens on the current
-worktree (or the linked agent, or the current project) in normal mode. The
-title shows the views as tabs: `1` worktrees, `2` agents, `3` projects:
+worktree (or the linked agent) in normal mode. The title shows the views as
+tabs: `1` worktrees, `2` agents:
 
 | View | Shows |
 | --- | --- |
 | worktrees | the worktrees of this repo: `@` current, `*` uncommitted, `● <linked agent> +n` / `● n` agents (outside a repo: the folder itself) |
-| agents | the agents of this repo, the linked one first, with their worktree. `Tab` switches to **all** agents running in tmux (other projects show their project name) and back |
-| projects | the current project, pinned folders, projects with agents (`● n`), recent ones, then every git repo `fd` finds under `projects.roots` (cached, so the list is there at once) |
+| agents | the agents of this repo, the linked one first, with their worktree |
 
 `/` filters **fuzzily**: the letters you type in order, not necessarily next
 to each other (`flf` finds `feature/login-form`), best matches first, the
 matched letters highlighted.
 
-| Key | Worktrees | Agents | Projects |
-| --- | --- | --- | --- |
-| `Enter` | switch the editor there | go to: switch to its worktree and link it | switch to it (its main worktree) |
-| `Shift+Enter` | peek: switch, keep link and viewer | link it, stay where you are | peek |
-| `1` / `2` / `3` | worktrees / agents / projects view | same | same |
-| `Tab` | | this repo's agents ⇄ all agents | |
-| `n` | new worktree | new agent in a worktree | |
-| `N` | dispatch a task | dispatch a task | |
-| `D` | remove worktree (choose: keep or stop its agents) | stop the agent | |
-| `f` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree | |
-| `a` / `c` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | | `a`: start an agent there (the editor stays) |
-| `y` | copy the path | | copy the path |
-| `v` / `g` | | show it in the split / in an external terminal | |
-| `s` | | write a prompt for this agent | |
-| `r` | | rename its tmux session | |
-| `/` | fuzzy filter | fuzzy filter | fuzzy filter |
-| `.` / `?` | actions for this row / all keys | same | same |
-| `Ctrl-R`, `q` | refresh, close | same | same |
+| Key | Worktrees | Agents |
+| --- | --- | --- |
+| `Enter` | switch the editor there | go to: switch to its worktree and link it |
+| `Shift+Enter` | peek: switch, keep link and viewer | link it, stay where you are |
+| `1` / `2` | worktrees / agents view | same |
+| `Tab` | agents view | worktrees view |
+| `n` | new worktree | new agent in a worktree |
+| `N` | dispatch a task | dispatch a task |
+| `D` | remove worktree (choose: keep or stop its agents) | stop the agent |
+| `f` | fork the linked agent into this worktree | fork this agent into another (or a new) worktree |
+| `a` / `c` | start a new agent / continue an earlier session here (a list: newest first, running ones left out) | |
+| `y` | copy the path | |
+| `v` / `g` | | show it in the split / in an external terminal |
+| `s` | | write a prompt for this agent |
+| `r` | | rename its tmux session |
+| `/` | fuzzy filter | fuzzy filter |
+| `.` / `?` | actions for this row / all keys | same |
+| `Ctrl-R`, `q` | refresh, close | same |
 
 Every key can be changed in `keys.yard` (see Configuration).
 
@@ -163,10 +159,6 @@ The small menus the yard opens (which agent, which worktree, continue a
 session, …) filter the same way: `/` and type, `Enter` takes the selected
 match, `Esc` clears the filter. The continue list holds the 50 latest
 sessions, so you can search for one by its title.
-
-A typical detour: `3` (projects) → `/nvim` → `Enter` on your Neovim config
-(pinned) → `1` (worktrees) → `a`: an agent starts there and the viewer shows
-it working.
 
 ### Linking, following and peeking
 
@@ -184,7 +176,7 @@ switchyard sees that as the agent's process changing folders (tmux follows it),
 which agents with a built-in worktree move do (Claude Code's `EnterWorktree`).
 Switching the editor yourself never moves an agent.
 
-**Peek** (`Shift+Enter` in the yard, also for projects and plain folders)
+**Peek** (`Shift+Enter` in the yard, also for a folder outside git)
 switches without touching the link or the viewer: look
 around in worktree B, copy a snippet, and send it to your agent in A. Changed
 your mind? `link_here()` links an agent of the worktree you're in.
@@ -310,13 +302,7 @@ require("switchyard").setup({
   live_reload = true,          -- reload open files when agents change them
   worktrees = "auto",          -- "auto" (worktrunk's wt when installed, else git) | "wt" | "git"
   yard = {
-    view = "worktrees",        -- the view the yard opens in: "worktrees" | "agents" | "projects"
-  },
-  projects = {                 -- the projects view (%)
-    roots = { "~" },           -- where fd looks for git repos
-    exclude = { "Library", "node_modules", ".cache", ".Trash", ".local/share/nvim",
-                ".oh-my-zsh", ".claude/plugins" },
-    pinned = {},               -- always listed, git or not: { "~/.config/nvim" }
+    view = "worktrees",        -- the view the yard opens in: "worktrees" | "agents"
   },
   viewer = {
     width = 0.45,              -- share of the editor width for the viewer
@@ -327,7 +313,7 @@ require("switchyard").setup({
   keys = {
     yard = {
       activate = "<CR>", alt_activate = "<S-CR>", toggle_view = "<Tab>",
-      view_worktrees = "1", view_agents = "2", view_projects = "3",
+      view_worktrees = "1", view_agents = "2",
       filter = "/", refresh = "<C-r>", close = "q", actions = ".", help = "?",
       new = "n", remove = "D", fork = "f", dispatch = "N",
       start_agent = "a", continue_agent = "c", copy_path = "y",

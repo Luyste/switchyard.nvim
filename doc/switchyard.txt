@@ -65,8 +65,6 @@ The link ~
   box, any other one can be added (|switchyard-config-agents|). No agent
   extensions are needed.
 
-- fd: finds the projects (`%` in the yard).
-
 Run `:checkhealth switchyard` to see what is found (|switchyard-health|).
 
 ==============================================================================
@@ -130,9 +128,10 @@ name ever changes.
 5. THE YARD                                                  *switchyard-yard*
 
 Open it with |switchyard.open_yard()| or |:Switchyard|. It opens in normal
-mode on the current worktree (or the linked agent, or the current project).
+mode on the current worktree (or the linked agent).
 The first view is set by |switchyard-config-yard.view|. The title shows the
-views as tabs with their keys: 1 worktrees, 2 agents, 3 projects.
+views as tabs with their keys: 1 worktrees, 2 agents. <Tab> switches
+between them.
 
 Views ~
                                                    *switchyard-yard-worktrees*
@@ -142,14 +141,7 @@ Worktrees view   Every worktree of the repository. `@` marks the current
                  in a worktree. Outside a repository: the folder itself.
                                                       *switchyard-yard-agents*
 Agents view      Every agent of the repository, with its worktree. `●`
-                 marks the linked agent. <Tab> switches to all agents
-                 running in tmux (another project's show its name) and
-                 back; the title then says "agents (all)".
-                                                    *switchyard-yard-projects*
-Projects view    The current project, pinned folders, projects with agents
-                 (`● n`), recent ones, then every git repository `fd` finds
-                 under the roots (|switchyard-config-projects|). The last
-                 scan is cached, so the list shows at once.
+                 marks the linked agent.
 
 Keys ~
                                                         *switchyard-yard-keys*
@@ -158,12 +150,11 @@ The names in brackets are the entries of |switchyard-config-keys|.
 Key         Worktrees view                Agents view ~
 <CR>        switch the editor there       go to: switch to its worktree
  (activate)                               and link it
-1, 2, 3     worktrees, agents, projects   same
- (view_worktrees, view_agents, view_projects)
+1, 2        worktrees, agents view        same
+ (view_worktrees, view_agents)
 <S-CR>      peek: switch, keep the link   link it, stay where you are
  (alt_activate) and the viewer
-<Tab>                                     this repo's agents / all
-                                          agents in tmux
+<Tab>       agents view                   worktrees view
  (toggle_view)
 n (new)     new worktree                  new agent in a worktree
 N           dispatch a task               dispatch a task
@@ -192,10 +183,6 @@ r (rename)                                rename its tmux session
 q (close),  close the yard                same
 <Esc>
 
-In the projects view: <CR> switches to the project (its main worktree),
-<S-CR> peeks, `a` starts an agent there (the editor stays), `y` copies the
-path.
-
 <C-n>/<C-p> and j/k move the selection.
 
 Actions that remove or stop something ask for confirmation (the picker
@@ -213,7 +200,7 @@ matches come first; the matched letters are highlighted. In the input:
     <S-CR>        alternate action (peek / link only)
     <C-n>, <Down> next row
     <C-p>, <Up>   previous row
-    <Tab>         agents view: this repo's agents / all agents
+    <Tab>         worktrees / agents view
     <Esc>, <C-c>  stop filtering, back to the list
 
 The yard closes when you move to a normal (non-floating) window.
@@ -253,7 +240,7 @@ servers. It refuses when a buffer has unsaved changes.
 
 Peeking ~
                                                              *switchyard-peek*
-Peek (<S-CR> on a worktree or project, also a folder outside git) switches
+Peek (<S-CR> on a worktree, also a folder outside git) switches
 the editor without touching the link or the viewer: look around in worktree
 B, copy a snippet, and send it to your agent in A. Changed your mind? |switchyard.link_here()| links an agent of the
 worktree you are in.
@@ -427,12 +414,6 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       yard = {
         view = "worktrees",
       },
-      projects = {
-        roots = { "~" },
-        exclude = { "Library", "node_modules", ".cache", ".Trash",
-          ".local/share/nvim", ".oh-my-zsh", ".claude/plugins" },
-        pinned = {},
-      },
       viewer = {
         width = 0.45,
         layout = "split", -- or "float"
@@ -442,7 +423,7 @@ Pass options to |switchyard.setup()|. The defaults: >lua
         yard = {
           activate = "<CR>", alt_activate = "<S-CR>",
           toggle_view = "<Tab>", filter = "/", refresh = "<C-r>",
-          view_worktrees = "1", view_agents = "2", view_projects = "3",
+          view_worktrees = "1", view_agents = "2",
           close = "q", actions = ".", help = "?",
           new = "n", remove = "D", fork = "f", dispatch = "N",
           start_agent = "a", continue_agent = "c", copy_path = "y",
@@ -508,17 +489,7 @@ live_reload ~
                                                  *switchyard-config-yard.view*
 yard.view ~
     Default: `"worktrees"`
-    The view the yard opens in first: "worktrees", "agents" or "projects".
-
-                                                  *switchyard-config-projects*
-projects ~
-    The yard's projects view. Lists are replaced, not merged.
-      roots     where `fd` looks for git repositories. Default: `{ "~" }`
-      exclude   folder names or paths `fd` skips (passed as --exclude)
-      pinned    folders always listed, git or not, e.g. a config folder
-                kept in a bare dotfiles repository: >lua
-                  pinned = { "~/.config/nvim" }
-<
+    The view the yard opens in first: "worktrees" or "agents".
 
                                               *switchyard-config-viewer.width*
 viewer.width ~
@@ -535,8 +506,7 @@ keys.yard ~
     alt_activate    <S-CR>    peek / link only
     view_worktrees  1         the worktrees view
     view_agents     2         the agents view
-    view_projects   3         the projects view
-    toggle_view     <Tab>     this repo's agents / all agents (agents view)
+    toggle_view     <Tab>     worktrees / agents view
     filter          /         filter the list
     refresh         <C-r>     refresh
     close           q         close the yard
