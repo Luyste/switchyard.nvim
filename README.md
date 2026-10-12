@@ -52,6 +52,10 @@ together:
 
 - **Neovim 0.12+**
 - **git**: worktrees are plain `git worktree`s
+- **[worktrunk](https://github.com/max-sixty/worktrunk)** (optional): when
+  `wt` is installed, switchyard creates, lists and removes worktrees through
+  it, so your `worktree-path` template and hooks (`post-create`: copy `.env`,
+  install dependencies, …) apply
 - **tmux**: agents run in tmux sessions, so switchyard can find them, show
   them in a split and type prompts into them, and they keep running when
   Neovim closes
@@ -304,6 +308,7 @@ require("switchyard").setup({
   terminal = "auto",           -- external terminal: "auto" | "ghostty" | "kitty" | "wezterm"
                                --   | "alacritty" | "terminal.app" | function(cmd) return argv end
   live_reload = true,          -- reload open files when agents change them
+  worktrees = "auto",          -- "auto" (worktrunk's wt when installed, else git) | "wt" | "git"
   yard = {
     view = "worktrees",        -- the view the yard opens in: "worktrees" | "agents" | "projects"
   },

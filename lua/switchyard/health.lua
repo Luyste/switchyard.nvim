@@ -30,7 +30,13 @@ function M.check()
 		end
 	end
 
-
+	if vim.fn.executable("wt") == 1 and opts.worktrees ~= "git" then
+		vim.health.ok("worktrees: worktrunk (wt): its path template and hooks apply")
+	elseif opts.worktrees == "wt" then
+		vim.health.error("worktrees = \"wt\", but wt is not installed", "Install worktrunk or set `worktrees = \"auto\"`")
+	else
+		vim.health.ok("worktrees: plain git (<repo>.<branch> next to the main worktree)")
+	end
 
 	vim.health.start("switchyard: agents")
 	local running = {}

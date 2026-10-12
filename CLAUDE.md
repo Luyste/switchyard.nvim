@@ -21,8 +21,9 @@ anything, then **inspect the actual code**: some items below are marked
   Oh My Zsh. Neovim config in `~/.config/nvim` (Lua, `vim.pack` plugin manager,
   one file per plugin under `lua/plugins/`), managed in a bare dotfiles repo.
 - Agents: **pi** (pi coding agent) at work, **Claude Code** at home.
-- Git worktrees: plain `git worktree` (switchyard no longer uses worktrunk or
-  pi-nvim; see "Agents through tmux" below).
+- Git worktrees: worktrunk (`wt`) when installed (config `worktrees = "auto"`),
+  else plain `git worktree`. Brought back Oct 2026 for wt's path template and
+  hooks; pi-nvim stays gone (see "Agents through tmux" below).
 - Agents run inside **tmux** sessions (one tmux server; `.tmux.conf` has
   `mouse on`, `window-size latest`, `escape-time 10`, `status off`).
 - Plugin repo checkout: `~/personal/projects/switchyard.nvim/` (loaded via
@@ -164,7 +165,12 @@ lua/switchyard/
                              main worktree: existing/remote branch = `git worktree add
                              <path> <branch>`, new = `-b <branch> <path> <default branch>`,
                              already checked out = its path; remove(cwd, wt, cb) =
-                             `git worktree remove` + `git branch -d` (merged only)
+                             `git worktree remove` + `git branch -d` (merged only);
+                             all three go to worktrunk.lua when `worktrunk()` picks it
+  worktrunk.lua              same API through `wt`: list = `wt list --format=json`,
+                             create = `wt switch <b> --no-cd --yes --format json`
+                             (retried with --create on "No branch named"), remove =
+                             `wt remove <b> --yes --foreground`
   projects.lua               switch(dir): refuse on unsaved, tabonly/only/enew, delete
                              file buffers (buftype==""), stop LSP clients, cd, redraw,
                              notify, fire User SwitchyardSwitched {from,to};

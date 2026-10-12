@@ -38,7 +38,8 @@ Concepts:                                                *switchyard-concepts*
 
 Tracks ~
     Git worktrees, one checkout of the repository per task, made and
-    removed with `git worktree`.
+    removed with `git worktree`, or with worktrunk (`wt`) when it's
+    installed: its path template and hooks then apply (option `worktrees`).
 
 Trains ~
     Agent sessions: pi, Claude Code, codex or any other CLI agent. Each one
@@ -422,6 +423,7 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       follow = true,
       terminal = "auto",
       live_reload = true,
+      worktrees = "auto", -- "auto" (wt when installed, else git) | "wt" | "git"
       yard = {
         view = "worktrees",
       },

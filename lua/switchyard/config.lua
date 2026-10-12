@@ -6,6 +6,9 @@ M.defaults = {
 	agents = { "pi", "claude", "codex" },
 	follow = true,
 	terminal = "auto",
+	-- Who makes and removes worktrees: "auto" (worktrunk's `wt` when installed,
+	-- else git) | "wt" | "git". wt brings its path template and hooks.
+	worktrees = "auto",
 	live_reload = true, -- open files follow changes made by agents
 	yard = {
 		view = "worktrees", -- the view the yard opens in first: "worktrees" | "agents" | "projects"

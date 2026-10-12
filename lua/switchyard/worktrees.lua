@@ -1,9 +1,18 @@
 -- Worktrees with plain git: list them, make one for a branch, remove one.
 -- A worktree: { path, branch, current, main, symbols } (symbols: "*" when it
--- has uncommitted changes).
+-- has uncommitted changes). With worktrunk installed, `wt` does the work
+-- (worktrunk.lua, config `worktrees`).
 local util = require("switchyard.util")
 
 local M = {}
+
+-- worktrunk.lua when config `worktrees` picks it, else nil (plain git)
+function M.worktrunk()
+	local choice = require("switchyard.config").options.worktrees
+	if choice == "wt" or (choice == "auto" and vim.fn.executable("wt") == 1) then
+		return require("switchyard.worktrunk")
+	end
+end
 
 local function git(cwd, args, callback)
 	util.run(vim.list_extend({ "git" }, args), { cwd = cwd }, callback)
@@ -29,6 +38,9 @@ end
 -- The worktrees of the repo at `cwd`, newest information each call.
 -- callback(worktrees) or callback(nil, error_message)
 function M.list(cwd, callback)
+	if M.worktrunk() then
+		return M.worktrunk().list(cwd, callback)
+	end
 	git(cwd, { "rev-parse", "--show-toplevel" }, function(_, toplevel)
 		git(cwd, { "worktree", "list", "--porcelain" }, function(ok, out, err)
 			if not ok then
@@ -83,6 +95,9 @@ end
 -- A branch that already has a worktree just gives its path.
 -- callback(path) or callback(nil, error_message)
 function M.create(cwd, branch, callback)
+	if M.worktrunk() then
+		return M.worktrunk().create(cwd, branch, callback)
+	end
 	M.list(cwd, function(worktrees, err)
 		if not worktrees then
 			return callback(nil, err)
@@ -127,6 +142,9 @@ end
 -- Remove worktree `wt` ({ path, branch }), and its branch when that's merged.
 -- git refuses a worktree with uncommitted changes. callback(ok, error_message)
 function M.remove(cwd, wt, callback)
+	if M.worktrunk() then
+		return M.worktrunk().remove(cwd, wt, callback)
+	end
 	git(cwd, { "worktree", "remove", wt.path }, function(ok, _, stderr)
 		if not ok then
 			return callback(false, vim.trim(stderr))
