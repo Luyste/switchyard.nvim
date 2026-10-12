@@ -71,17 +71,49 @@ local function start_typing()
 	vim.cmd.startinsert()
 end
 
--- The viewer window on the right: reuse it, or create it
+-- Lines the tabline takes at the top, and the statusline + command line at the bottom
+local function editor_edges()
+	local tabline = vim.o.showtabline == 2 or (vim.o.showtabline == 1 and #vim.api.nvim_list_tabpages() > 1)
+	return tabline and 1 or 0, vim.o.cmdheight + (vim.o.laststatus > 0 and 1 or 0)
+end
+
+-- layout = "float": the viewer floats on the right, over the editor, full
+-- height. zindex 40: below the yard (50) and the menus (100).
+local function float_config()
+	local top, bottom = editor_edges()
+	local width = math.floor(vim.o.columns * require("switchyard.config").options.viewer.width)
+	return {
+		relative = "editor",
+		anchor = "NE",
+		row = top,
+		col = vim.o.columns,
+		width = math.max(width - 2, 20), -- the border takes a column on each side
+		height = math.max(vim.o.lines - top - bottom - 2, 5),
+		border = "rounded",
+		zindex = 40,
+	}
+end
+
+-- The viewer window on the right: reuse it, or create it. Returns the
+-- placeholder buffer a new float starts with (to delete once the terminal is in).
 local function open_window()
 	if valid_win(viewer.win) then
 		vim.api.nvim_set_current_win(viewer.win)
 		return
 	end
-	vim.cmd("botright vsplit")
-	viewer.win = vim.api.nvim_get_current_win()
-	local width = require("switchyard.config").options.viewer.width
-	vim.api.nvim_win_set_width(viewer.win, math.floor(vim.o.columns * width))
+	local options = require("switchyard.config").options.viewer
+	local placeholder
+	if options.layout == "float" then
+		-- A float needs a buffer from the start; attach() puts the terminal in
+		placeholder = not valid_buf(viewer.buf) and vim.api.nvim_create_buf(false, true) or nil
+		viewer.win = vim.api.nvim_open_win(placeholder or viewer.buf, true, float_config())
+	else
+		vim.cmd("botright vsplit")
+		viewer.win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_width(viewer.win, math.floor(vim.o.columns * options.width))
+	end
 	require("switchyard.ui").set_highlights()
+	return placeholder
 end
 
 -- Start a terminal attached to tmux session `name`, in the viewer window
@@ -146,15 +178,18 @@ function M.is_open()
 	return valid_win(viewer.win)
 end
 
--- Show `agent` ({ name, pid }) in the viewer split. focus = false: keep the
+-- Show `agent` ({ name, pid }) in the viewer. focus = false: keep the
 -- cursor where it is (for updates the user didn't ask for).
 local function show_name(agent, focus)
 	local from = vim.api.nvim_get_current_win()
-	open_window()
+	local placeholder = open_window()
 	if viewer.name == agent.name and valid_buf(viewer.buf) then
 		vim.api.nvim_win_set_buf(viewer.win, viewer.buf)
 	else
 		attach(agent.name)
+	end
+	if placeholder then
+		vim.api.nvim_buf_delete(placeholder, { force = true })
 	end
 	require("switchyard.sessions").viewed(agent.pid)
 	-- Window-local options set here only stick to the buffer in the window at that
@@ -163,7 +198,8 @@ local function show_name(agent, focus)
 		vim.api.nvim_set_option_value(option, value, { win = viewer.win, scope = "local" })
 	end
 	vim.wo[viewer.win].winbar = "%!v:lua.require'switchyard.view'.winbar()"
-	vim.wo[viewer.win].winhighlight = "WinBar:StatusLine,WinBarNC:StatusLineNC"
+	-- NormalFloat:Normal: a floating viewer has the editor's background, like the split
+	vim.wo[viewer.win].winhighlight = "WinBar:StatusLine,WinBarNC:StatusLineNC,NormalFloat:Normal"
 	if focus == false then
 		vim.api.nvim_set_current_win(from)
 	else
@@ -233,8 +269,16 @@ vim.api.nvim_create_autocmd("User", {
 	end,
 })
 vim.api.nvim_create_autocmd("DirChanged", { pattern = "global", callback = refresh })
+-- A floating viewer keeps its place and size when the editor is resized
+vim.api.nvim_create_autocmd("VimResized", {
+	callback = function()
+		if valid_win(viewer.win) and vim.api.nvim_win_get_config(viewer.win).relative ~= "" then
+			vim.api.nvim_win_set_config(viewer.win, float_config())
+		end
+	end,
+})
 
--- Show `session` in the viewer split
+-- Show `session` in the viewer
 function M.show(session)
 	show_name({ name = session.tmux, pid = session.pid })
 	refresh()

@@ -21,7 +21,8 @@ M.defaults = {
 		pinned = {}, -- e.g. { "~/.config/nvim" }
 	},
 	viewer = {
-		width = 0.45, -- share of the editor's width for the viewer split
+		width = 0.45, -- share of the editor's width for the viewer
+		layout = "split", -- "split" (a window on the right) | "float" (floating on the right)
 	},
 	keys = {
 		-- Inside the yard (buffer-local). More arrive with the yard's actions.

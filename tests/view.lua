@@ -31,4 +31,27 @@ view.hide()
 assert(not view.is_open(), "hidden")
 assert(vim.bo.buftype == "", "the last window now holds an empty editor buffer")
 
+-- layout = "float": a float on the right, below the yard and menus; hiding closes it
+require("switchyard.config").options.viewer.layout = "float"
+view.hide()
+vim.cmd("only")
+-- Without a terminal to reuse, the float starts with a placeholder buffer
+for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+	if vim.bo[buf].buftype == "terminal" then
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end
+end
+view.show(session)
+assert(view.is_open(), "shows the floating viewer")
+local float = vim.api.nvim_win_get_config(vim.api.nvim_get_current_win())
+assert(float.relative == "editor" and float.zindex == 40, "a float under the yard and menus")
+assert(vim.bo.buftype == "terminal", "the terminal is in the float")
+for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+	assert(vim.bo[buf].buftype ~= "nofile", "no placeholder buffer left over")
+end
+view.hide()
+assert(not view.is_open() and #vim.api.nvim_list_wins() == 1, "hiding closes the float")
+view.show(session)
+assert(vim.bo.buftype == "terminal", "shown again, same terminal")
+
 print("view: ok")
