@@ -6,7 +6,7 @@ local claude = { name = "claude", cmd = { "claude" } }
 local agents = { pi, claude }
 
 local panes = table.concat({
-	"%0\t100\tpi-main\t1790000000\t/repo",
+	"%0\t100\tpi-main\t1790000000\t/repo\t1790000500",
 	"%1\t200\tclaude-main\t1790000100\t/repo",
 	"%2\t300\tshell\t1790000200\t/repo",
 	"%3\t400\tclaude-feat\t1790000300\t/repo.feat",
@@ -36,6 +36,10 @@ assert(#sessions == 3, "three agents: " .. #sessions)
 assert(by_pane["%0"].agent == pi and by_pane["%0"].pid == 101, "pi under a wrapper, counted once (the nearest process)")
 assert(by_pane["%0"].tmux == "pi-main" and by_pane["%0"].cwd == "/repo", "tmux name and folder")
 assert(by_pane["%0"].started == 1790000000, "started = the tmux session's creation time")
+assert(by_pane["%0"].activity == 1790000500 and by_pane["%1"].activity == nil, "activity = window_activity, when tmux gave it")
+local sessions = require("switchyard.sessions")
+assert(sessions.state({ activity = os.time() - 1 }) == "working", "output a second ago: working")
+assert(sessions.state({ activity = os.time() - 10 }) == "idle" and sessions.state({}) == "idle", "quiet: idle")
 assert(by_pane["%1"].agent == claude and by_pane["%1"].pid == 200, "the pane's own process is the agent")
 assert(not by_pane["%2"], "a shell with `nvim pi.lua` / `grep pi` is no agent")
 assert(by_pane["%3"].pid == 401, "the shell line mentioning claude doesn't count, its claude child does")

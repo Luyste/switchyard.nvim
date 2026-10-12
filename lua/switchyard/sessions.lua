@@ -238,6 +238,16 @@ function M.update(list)
 		vim.cmd("redrawstatus")
 		vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsChanged" })
 	end
+	-- Every snapshot (also unchanged ones): the agents' working/idle state moves on
+	vim.api.nvim_exec_autocmds("User", { pattern = "SwitchyardSessionsUpdated" })
+end
+
+-- "working" while the agent's screen changed in the last few seconds, else
+-- "idle". From tmux's window_activity, so the same for every agent.
+-- ponytail: screen output only; "waiting for you" (a permission question)
+-- needs reading the screen (tmux capture-pane), per agent
+function M.state(session)
+	return session.activity and os.time() - session.activity <= 3 and "working" or "idle"
 end
 
 -- Take a new snapshot now; callback() once the cache has it. Calls while one

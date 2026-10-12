@@ -6,6 +6,9 @@ function M.setup(opts)
 	if require("switchyard.config").options.live_reload then
 		require("switchyard.live").setup()
 	end
+	if require("switchyard.config").options.viewer.bar then
+		require("switchyard.view") -- its autocmds keep the bar up to date
+	end
 end
 
 function M.switch(dir)

@@ -435,6 +435,8 @@ Pass options to |switchyard.setup()|. The defaults: >lua
       },
       viewer = {
         width = 0.45,
+        layout = "split", -- or "float"
+        bar = false, -- `● agent  working|idle` while the viewer is closed
       },
       keys = {
         yard = {

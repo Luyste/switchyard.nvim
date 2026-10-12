@@ -54,4 +54,24 @@ assert(not view.is_open() and #vim.api.nvim_list_wins() == 1, "hiding closes the
 view.show(session)
 assert(vim.bo.buftype == "terminal", "shown again, same terminal")
 
+-- viewer.bar: the linked agent while the viewer is closed, gone while it's open
+require("switchyard.config").options.viewer.bar = true
+sessions.linked = function()
+	return vim.tbl_extend("force", session, { activity = os.time() })
+end
+local function bar_win()
+	for _, w in ipairs(vim.api.nvim_list_wins()) do
+		local line = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w), 0, 1, false)[1] or ""
+		if line:find("working", 1, true) or line:find("idle", 1, true) then
+			return w, line
+		end
+	end
+end
+view.hide()
+local w, line = bar_win()
+assert(w and line == " ● fake  working ", "the bar shows the linked agent, working: " .. tostring(line))
+assert(vim.api.nvim_win_get_config(w).focusable == false, "not in <C-w>w")
+view.show(session)
+assert(not bar_win(), "no bar while the viewer is open")
+
 print("view: ok")

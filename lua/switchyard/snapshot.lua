@@ -1,12 +1,13 @@
 -- Which agents run where: one look at tmux and ps, no agent plugins needed.
 -- Every tmux pane whose process tree contains an agent becomes a session:
--- { agent, pid, pane, tmux, cwd, started }.
+-- { agent, pid, pane, tmux, cwd, started, activity }.
 local util = require("switchyard.util")
 
 local M = {}
 
 -- tmux list-panes -a output, one pane per line
-M.panes_format = "#{pane_id}\t#{pane_pid}\t#{session_name}\t#{session_created}\t#{pane_current_path}"
+-- (window_activity: when the agent's screen last changed, for sessions.state)
+M.panes_format = "#{pane_id}\t#{pane_pid}\t#{session_name}\t#{session_created}\t#{pane_current_path}\t#{window_activity}"
 
 -- Programs that run an agent written as a script: `node /opt/homebrew/bin/pi`
 local interpreters = { node = true, bun = true, deno = true, python = true, python3 = true, ruby = true }
@@ -44,7 +45,7 @@ function M.parse(panes, ps, agents)
 
 	local sessions = {}
 	for line in panes:gmatch("[^\n]+") do
-		local pane, pane_pid, name, created, path = unpack(vim.split(line, "\t", { plain = true }))
+		local pane, pane_pid, name, created, path, activity = unpack(vim.split(line, "\t", { plain = true }))
 		-- Walk down from the pane's process, nearest first: the first agent found
 		-- is the session (its own helper processes below it don't count again)
 		local queue, i, found = { tonumber(pane_pid) }, 1, nil
@@ -67,6 +68,7 @@ function M.parse(panes, ps, agents)
 				tmux = name,
 				cwd = path,
 				started = tonumber(created) or 0, -- seconds since 1970
+				activity = tonumber(activity), -- seconds since 1970
 			})
 		end
 	end

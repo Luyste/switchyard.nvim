@@ -153,6 +153,7 @@ local function attach(name)
 						pcall(vim.api.nvim_win_close, viewer.win, true)
 					end
 					viewer.win, viewer.buf, viewer.name = nil, nil, nil
+					M.update_bar()
 				end
 				if valid_buf(buf) then
 					pcall(vim.api.nvim_buf_delete, buf, { force = true })
@@ -200,6 +201,7 @@ local function show_name(agent, focus)
 	vim.wo[viewer.win].winbar = "%!v:lua.require'switchyard.view'.winbar()"
 	-- NormalFloat:Normal: a floating viewer has the editor's background, like the split
 	vim.wo[viewer.win].winhighlight = "WinBar:StatusLine,WinBarNC:StatusLineNC,NormalFloat:Normal"
+	M.update_bar()
 	if focus == false then
 		vim.api.nvim_set_current_win(from)
 	else
@@ -275,6 +277,14 @@ vim.api.nvim_create_autocmd("VimResized", {
 		if valid_win(viewer.win) and vim.api.nvim_win_get_config(viewer.win).relative ~= "" then
 			vim.api.nvim_win_set_config(viewer.win, float_config())
 		end
+		M.update_bar()
+	end,
+})
+-- The bar: every snapshot (the state moves on) and every link change
+vim.api.nvim_create_autocmd("User", {
+	pattern = { "SwitchyardSessionsUpdated", "SwitchyardLinkChanged" },
+	callback = function()
+		M.update_bar()
 	end,
 })
 
@@ -300,6 +310,7 @@ function M.hide()
 		vim.api.nvim_win_hide(viewer.win)
 	end
 	viewer.win = nil
+	M.update_bar()
 end
 
 -- Jump between the viewer and the editor, in terminal and normal mode.
@@ -349,6 +360,77 @@ function M.toggle()
 			end, list),
 		})
 	end)
+end
+
+---------------------------------------------------------------------------
+-- The bar (viewer.bar): the linked agent and its state while the viewer is closed
+---------------------------------------------------------------------------
+
+local bar = { buf = nil, win = nil }
+local bar_ns = vim.api.nvim_create_namespace("switchyard_bar")
+
+-- Show, update or remove the bar: a one-line float in the bottom-right
+-- corner, `● name  working`. Clicking it opens the viewer.
+function M.update_bar()
+	local sessions = require("switchyard.sessions")
+	local linked = sessions.linked()
+	if not require("switchyard.config").options.viewer.bar or valid_win(viewer.win) or not linked then
+		if valid_win(bar.win) then
+			vim.api.nvim_win_close(bar.win, true)
+		end
+		bar.win = nil
+		return
+	end
+
+	local name = sessions.name(linked)
+	if vim.fn.strchars(name) > 30 then
+		name = vim.fn.strcharpart(name, 0, 29) .. "…"
+	end
+	local state = sessions.state(linked)
+	local text = " ● " .. name .. "  " .. state .. " "
+	if not valid_buf(bar.buf) then
+		bar.buf = vim.api.nvim_create_buf(false, true)
+		-- focusable = false keeps the bar out of <C-w>w; mouse = true still lets a
+		-- click enter it: go back and open the viewer
+		vim.api.nvim_create_autocmd("BufEnter", {
+			buffer = bar.buf,
+			callback = function()
+				vim.schedule(function()
+					vim.cmd("wincmd p")
+					if not valid_win(viewer.win) then
+						M.toggle()
+					end
+				end)
+			end,
+		})
+	end
+	vim.api.nvim_buf_set_lines(bar.buf, 0, -1, false, { text })
+	vim.api.nvim_buf_clear_namespace(bar.buf, bar_ns, 0, -1)
+	vim.api.nvim_buf_set_extmark(bar.buf, bar_ns, 0, 1, {
+		end_col = 1 + #"●",
+		hl_group = state == "working" and "SwitchyardLinked" or "SwitchyardDim",
+	})
+
+	local _, bottom = editor_edges()
+	local config = {
+		relative = "editor",
+		anchor = "SE",
+		row = vim.o.lines - bottom, -- just above the statusline
+		col = vim.o.columns,
+		width = vim.fn.strdisplaywidth(text),
+		height = 1,
+		style = "minimal",
+		focusable = false,
+		mouse = true,
+		zindex = 40,
+	}
+	if valid_win(bar.win) then
+		vim.api.nvim_win_set_config(bar.win, config)
+	else
+		require("switchyard.ui").set_highlights()
+		bar.win = vim.api.nvim_open_win(bar.buf, false, config)
+		vim.wo[bar.win].winhighlight = "NormalFloat:StatusLine"
+	end
 end
 
 -------------------------------------------------------------------------

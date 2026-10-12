@@ -232,8 +232,15 @@ lua/switchyard/
                              the main repo), remember/recent, cached, find(on_found,
                              on_done) = fd --hidden --no-ignore -t d --prune -g .git
                              (streamed, cached)
-  view.lua                   the viewer (split + statusline with agent tabs, cycle,
-                             external terminal)
+  view.lua                   the viewer (split, or float with `viewer.layout = "float"`:
+                             NE, zindex 40, VimResized; winbar with agent tabs,
+                             external terminal); `viewer.bar`: one-line float bottom
+                             right `● name  working|idle` for the linked agent while the
+                             viewer is closed (focusable = false + mouse = true: a click
+                             enters it → BufEnter opens the viewer); updated on
+                             SwitchyardSessionsUpdated (every snapshot)
+  sessions.state(s)          "working" when tmux's window_activity (snapshot) is ≤ 3 s
+                             old, else "idle"; "waiting for you" would need capture-pane
 tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests/<name>.lua
                              (live: live reload; arrival: arrival rules + peek (fake viewer);
                              history: earlier sessions from a fake home;

@@ -23,6 +23,7 @@ M.defaults = {
 	viewer = {
 		width = 0.45, -- share of the editor's width for the viewer
 		layout = "split", -- "split" (a window on the right) | "float" (floating on the right)
+		bar = false, -- while the viewer is closed: the linked agent and working/idle, bottom right
 	},
 	keys = {
 		-- Inside the yard (buffer-local). More arrive with the yard's actions.

@@ -319,7 +319,10 @@ require("switchyard").setup({
     pinned = {},               -- always listed, git or not: { "~/.config/nvim" }
   },
   viewer = {
-    width = 0.45,              -- share of the editor width for the viewer split
+    width = 0.45,              -- share of the editor width for the viewer
+    layout = "split",          -- "split" | "float" (floating on the right, full height)
+    bar = false,               -- while the viewer is closed: `● agent  working|idle` bottom
+                               --   right (from tmux's window activity); click it to open
   },
   keys = {
     yard = {
