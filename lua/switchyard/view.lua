@@ -126,6 +126,17 @@ local function attach(name)
 	pcall(vim.api.nvim_buf_set_name, buf, "switchyard://" .. name)
 	viewer.buf, viewer.name = buf, name
 
+	-- Scrolling is tmux's job (its own history, mouse on). Neovim keeps no
+	-- scrollback of its own, and the wheel in normal mode goes back to typing
+	-- and on to tmux, instead of scrolling Neovim's copy of the screen.
+	vim.bo[buf].scrollback = 1
+	for _, key in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>" }) do
+		vim.keymap.set("n", key, function()
+			vim.cmd.startinsert()
+			vim.api.nvim_feedkeys(vim.keycode(key), "n", false)
+		end, { buffer = buf })
+	end
+
 	-- Entering the viewer goes straight to typing
 	vim.api.nvim_create_autocmd("BufEnter", {
 		buffer = buf,

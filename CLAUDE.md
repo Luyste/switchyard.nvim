@@ -299,6 +299,8 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
     not in terminal mode.
   - The viewer is only for typing to the agent: no buffer-local keys, no
     cycling (removed). Choosing which agent to see happens in the yard.
+    Scrolling is tmux's: the terminal buffer has `scrollback = 1`, and the
+    wheel in normal mode goes back to terminal mode and on to tmux.
     `focus_view()` jumps between viewer and editor (stopinsert + previous window).
 - **Badge contrast**: text color = the theme's light or dark color, whichever
   contrasts more with the badge background.
