@@ -108,8 +108,8 @@ A starting point: >lua
       { desc = "switchyard: jump between agent and editor" })
     map({ "n", "x" }, "<leader>yp", sy("prompt"),
       { desc = "switchyard: prompt (+ selection)" })
-    map("n", "<leader>yl", sy("prompt_line"),
-      { desc = "switchyard: prompt with this line + diagnostics" })
+    map({ "n", "x" }, "<leader>yl", sy("prompt_line"),
+      { desc = "switchyard: prompt with this line/selection + diagnostics" })
     map({ "n", "x" }, "<leader>yd", sy("dispatch"),
       { desc = "switchyard: dispatch a task" })
     map({ "n", "t" }, "<leader>yh", sy("link_here"),
@@ -278,7 +278,10 @@ target agent.
 The draft is kept when the builder closes (it also closes as soon as you
 click elsewhere), so you can collect several pieces of code before sending.
 
-|switchyard.prompt_line()| adds the current line with its diagnostics.
+|switchyard.prompt_line()| adds the current line (in visual mode: the
+selected lines). Contexts bring their diagnostics along. A target chosen
+with CTRL-T lasts while the builder is open; opened again, it aims at the
+linked agent.
 
 Keys ~
                                                       *switchyard-prompt-keys*
@@ -381,8 +384,8 @@ prompt()
 
                                                     *switchyard.prompt_line()*
 prompt_line()
-    Add the current line and its diagnostics as context, and open the
-    prompt builder.
+    Add the current line (in visual mode: the selected lines) and its
+    diagnostics as context, and open the prompt builder.
 
                                                        *switchyard.dispatch()*
 dispatch()

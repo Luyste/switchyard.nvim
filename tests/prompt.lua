@@ -141,3 +141,31 @@ assert(started.cmd[2] == "Add dark mode\nto the settings page", "the prompt is i
 assert(prompt.draft_status() == "", "draft cleared")
 
 print("dispatch: ok")
+
+-- Visual Cmd+Shift+L: the selected lines with their diagnostics
+vim.api.nvim_set_current_win(editor)
+vim.api.nvim_set_current_buf(source)
+vim.keymap.set("x", "<F8>", function()
+	require("switchyard").prompt_line()
+end)
+vim.api.nvim_win_set_cursor(0, { 3, 0 })
+vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("Vj<F8>", true, false, true), "x", false)
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "fix" })
+prompt.send()
+assert(sent == "fix\n\nFrom ctx_test.lua:3-4:\n```lua\nlocal c = 3\nreturn a + b + c\n```\n- WARN: unused", "selection + diagnostics:\n" .. tostring(sent))
+
+-- A target chosen earlier (dispatch, the yard's `s`) doesn't stick: closed
+-- without sending, the next Cmd+L goes to the linked agent
+vim.api.nvim_set_current_win(editor)
+prompt.open_dispatch()
+vim.api.nvim_set_current_win(editor)
+vim.wait(50)
+prompt.open_for({ pid = 2, cwd = "/elsewhere", agent = fake_pi, tmux = "other", pane = "%2", started = 0 })
+vim.api.nvim_set_current_win(editor)
+vim.wait(50)
+prompt.open()
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "to the linked one" })
+prompt.send()
+assert(sent == "to the linked one", "sent to the linked agent")
+
+print("targets: ok")

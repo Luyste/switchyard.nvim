@@ -40,7 +40,7 @@ anything, then **inspect the actual code**: some items below are marked
     `<D-y>` open_yard (n + t), `<D-j>` toggle_view
     (n + t), `<D-J>` focus_view (n + t: jump between viewer and editor),
     `<D-O>` open_external, `<D-H>` link_here, `<D-l>`/`<D-L>` prompt /
-    prompt_line, `<D-D>` dispatch.
+    prompt_line (both n + x), `<D-D>` dispatch.
   - fzf-lua (`lua/plugins/picker.lua`): `<D-f>` = `fzf.global` (files, `$`
     buffers, `@`/`#` symbols), `<D-g>` live_grep, `<D-G>` grep_cword,
     `<D-CR>` resume. (`grep` as a `/` prefix in global fails: rg gets an
@@ -384,7 +384,8 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    draft = one hidden buffer that survives closing; the window **disappears on
    focus loss**, my statusline shows DRAFT via `draft_status()`; Cmd+L opens).
    Part 2 done: contexts (Visual Cmd+L via `prompt()` in visual mode, Cmd+Shift+L
-   `prompt_line()` = line + diagnostics; snapshot of the lines at add time; a
+   `prompt_line()` = line, or the selection in visual mode; every context
+   carries the diagnostics of its lines; snapshot of the lines at add time; a
    non-focusable list above the input, one line per context; ranges highlighted
    (Visual) while open; Ctrl-F = the file it was opened from, as a path
    (`File: <path>`, the agent reads it); Ctrl-D = menu to remove one, Ctrl-X clears all; sent as
@@ -392,7 +393,9 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
    relative to the target's folder when inside it, else absolute). DRAFT n in
    the statusline. The builder stays open when a switchyard menu takes focus.
    Part 3 done: Ctrl-T = menu of this repo's agents, the prompt goes there
-   (link unchanged; back to the linked agent after sending); yard `s` =
+   (link unchanged; back to the linked agent after sending, or when the
+   builder is opened again after closing: `open()` resets target + dispatch,
+   `open_for`/`open_dispatch` don't); yard `s` =
    `prompt.open_for(session)`; title `→ name (linked) (in <wt>)`, target looked
    up on open/choose only (not per keystroke); Ctrl-O hand-over =
    `tmux.paste` (load-buffer from stdin + paste-buffer -p, no Enter) into the
@@ -427,7 +430,7 @@ tests/*.lua                  nvim --headless -u NONE --cmd "set rtp+=." -l tests
   `e` = expand the whole draft into a Markdown buffer for editing the code.
 - **Draft:** survives closing and focus loss; cleared after send/hand-over.
   Visual Cmd+L adds the selection (file, range, filetype, text) and opens;
-  normal Cmd+L opens; Cmd+Shift+L adds the current line + its diagnostics.
+  normal Cmd+L opens; Cmd+Shift+L adds the current line (visual: the selection) + its diagnostics.
 - **Message assembly at send time:** prompt text first, then each context as
   `From <path>:<a>-<b>:` + fenced code block with filetype (diagnostics as a
   list). Paths relative to the target agent's worktree when it's the same

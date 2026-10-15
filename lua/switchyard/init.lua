@@ -35,10 +35,15 @@ function M.dispatch()
 	prompt.open_dispatch()
 end
 
--- Add the current line and its diagnostics to the prompt, and open it
+-- Add the current line (in visual mode: the selected lines) and its
+-- diagnostics to the prompt, and open it
 function M.prompt_line()
 	local prompt = require("switchyard.prompt")
-	prompt.add_line()
+	if vim.fn.mode():match("^[vV\22]") then
+		prompt.add_selection()
+	else
+		prompt.add_line()
+	end
 	prompt.open()
 end
 

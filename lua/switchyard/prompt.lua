@@ -126,20 +126,29 @@ local function add(buf, first, last, diagnostics)
 	})
 end
 
--- Visual mode: add the selected lines
+-- Lines `first`..`last` of the current buffer, with their diagnostics
+local function add_lines(first, last)
+	local buf = vim.api.nvim_get_current_buf()
+	local diagnostics = {}
+	for _, d in ipairs(vim.diagnostic.get(buf)) do
+		if d.lnum >= first - 1 and d.lnum <= last - 1 then
+			table.insert(diagnostics, { severity = vim.diagnostic.severity[d.severity], message = d.message })
+		end
+	end
+	add(buf, first, last, diagnostics)
+end
+
+-- Visual mode: add the selected lines (and their diagnostics)
 function M.add_selection()
 	local a, b = vim.fn.line("v"), vim.fn.line(".")
-	add(vim.api.nvim_get_current_buf(), math.min(a, b), math.max(a, b))
+	add_lines(math.min(a, b), math.max(a, b))
 	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
 end
 
 -- Normal mode: add the current line with its diagnostics
 function M.add_line()
-	local buf, line = vim.api.nvim_get_current_buf(), vim.fn.line(".")
-	local diagnostics = vim.tbl_map(function(d)
-		return { severity = vim.diagnostic.severity[d.severity], message = d.message }
-	end, vim.diagnostic.get(buf, { lnum = line - 1 }))
-	add(buf, line, line, diagnostics)
+	local line = vim.fn.line(".")
+	add_lines(line, line)
 end
 
 -- Ctrl-F: the whole file the builder was opened from (once)
@@ -317,7 +326,7 @@ local function dispatch()
 	M.close()
 	require("switchyard.menu").input({ title = "dispatch: branch for the task", default = M.slug(text) }, function(branch)
 		if not branch or branch == "" then
-			return M.open() -- back to the draft
+			return M.open_dispatch() -- back to the draft
 		end
 		require("switchyard.actions").with_agent(function(agent)
 			local agents = require("switchyard.agents")
@@ -461,8 +470,8 @@ local function set_keymaps(buf)
 	map("n", "<C-x>", clear)
 end
 
--- Open the builder (or focus it), typing right away
-function M.open()
+-- Show the builder (or focus it), typing right away
+local function show()
 	local current = vim.api.nvim_get_current_buf()
 	if current ~= state.buf then
 		state.origin_buf = current
@@ -513,16 +522,25 @@ function M.open()
 	vim.cmd("startinsert!") -- typing on at the end of the draft
 end
 
+-- Open the builder. A target chosen earlier (^T, the yard's `s`, dispatch)
+-- only lasts while it's open: opened again, it goes to the linked agent.
+function M.open()
+	if not valid_win(state.win) then
+		state.target, state.dispatch = nil, false
+	end
+	show()
+end
+
 -- Open the builder aimed at `session` for this prompt (the link stays)
 function M.open_for(session)
 	state.target, state.dispatch = session, false
-	M.open()
+	show()
 end
 
 -- Open the builder for a dispatch: the prompt becomes a new agent's task
 function M.open_dispatch()
 	state.dispatch = true
-	M.open()
+	show()
 end
 
 -- For statuslines: "DRAFT" (+ number of contexts) while a draft waits and the

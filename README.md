@@ -103,7 +103,7 @@ map({ "n", "t" }, "<leader>yy", sy("open_yard"), { desc = "switchyard: the yard"
 map({ "n", "t" }, "<leader>yv", sy("toggle_view"), { desc = "switchyard: show/hide the agent" })
 map({ "n", "t" }, "<leader>yj", sy("focus_view"), { desc = "switchyard: jump between agent and editor" })
 map({ "n", "x" }, "<leader>yp", sy("prompt"), { desc = "switchyard: prompt (+ selection)" })
-map("n", "<leader>yl", sy("prompt_line"), { desc = "switchyard: prompt with this line + diagnostics" })
+map({ "n", "x" }, "<leader>yl", sy("prompt_line"), { desc = "switchyard: prompt with this line/selection + diagnostics" })
 map({ "n", "x" }, "<leader>yd", sy("dispatch"), { desc = "switchyard: dispatch a task" })
 map({ "n", "t" }, "<leader>yh", sy("link_here"), { desc = "switchyard: link an agent in this worktree" })
 map("n", "<leader>yo", sy("open_external"), { desc = "switchyard: agent in an external terminal" })
@@ -214,7 +214,10 @@ collect several pieces of code before sending.
 | `Esc`, then `q` | close (the draft stays) |
 | `Ctrl-X` (normal mode) | clear the draft |
 
-`prompt_line()` adds the current line with its diagnostics. The agent
+`prompt_line()` adds the current line (in visual mode: the selected lines),
+and a selection always brings its diagnostics along. A target chosen with
+`Ctrl-T` lasts while the builder is open; opened again, it aims at the
+linked agent. The agent
 receives your text followed by each piece of context as a fenced code block
 with its path and line numbers. Paths are relative to the agent's worktree
 when the file is in it, and absolute otherwise, so an agent in another
